@@ -3,7 +3,7 @@ import { headersSuite } from "../src/suites/headers.js";
 import { HttpClient } from "../src/http/client.js";
 import { createLogger } from "../src/core/logger.js";
 import type { SentinelConfig } from "../src/config/schema.js";
-import { mockFetchOnce } from "./helpers/fetchMock.js";
+import { mockFetchQueue } from "./helpers/fetchMock.js";
 
 function makeConfig(baseUrl: string): SentinelConfig {
   return {
@@ -24,14 +24,14 @@ function makeConfig(baseUrl: string): SentinelConfig {
 
 describe("headers suite", () => {
   it("emits findings when security headers are missing", async () => {
-    const fetchMock = mockFetchOnce({
+    const fetchMock = mockFetchQueue([{
       status: 200,
       headers: {
         // intentionally empty security headers
         "content-type": "application/json"
       },
       bodyText: "{}"
-    });
+    }]);
 
     const config = makeConfig("https://api.example.com");
     const http = new HttpClient({
@@ -54,7 +54,7 @@ describe("headers suite", () => {
   });
 
   it("emits fewer findings when some headers are present", async () => {
-    mockFetchOnce({
+    mockFetchQueue([{
       status: 200,
       headers: {
         "strict-transport-security": "max-age=31536000; includeSubDomains",
@@ -62,7 +62,7 @@ describe("headers suite", () => {
         "content-type": "application/json"
       },
       bodyText: "{}"
-    });
+    }]);
 
     const config = makeConfig("https://api.example.com");
     const http = new HttpClient({

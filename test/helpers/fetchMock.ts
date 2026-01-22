@@ -7,7 +7,6 @@ type MockedFetchResponse = {
 };
 
 function makeHeaders(headers: Record<string, string>) {
-  // Minimal Headers-like object for our usage (res.headers.forEach)
   const entries = Object.entries(headers);
   return {
     forEach(cb: (value: string, key: string) => void) {
@@ -16,21 +15,21 @@ function makeHeaders(headers: Record<string, string>) {
   } as unknown as Headers;
 }
 
-export function mockFetchOnce(resp: MockedFetchResponse) {
-  const status = resp.status;
-  const headers = makeHeaders(resp.headers ?? {});
-  const bodyText = resp.bodyText ?? "";
+export function mockFetchQueue(responses: MockedFetchResponse[]) {
+  const queue = [...responses];
 
   const fetchMock = vi.fn(async () => {
+    const next = queue.shift();
+    if (!next) throw new Error("mockFetchQueue: no more mocked responses in queue");
+
     return {
-      status,
-      headers,
-      text: async () => bodyText
+      status: next.status,
+      headers: makeHeaders(next.headers ?? {}),
+      text: async () => next.bodyText ?? ""
     } as unknown as Response;
   });
 
-  // Attach to global fetch
   vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
   return fetchMock;
 }
+
