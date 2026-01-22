@@ -10,6 +10,7 @@
     "build": "tsc -p tsconfig.json",
     "dev": "npm run build && node dist/cli/index.js scan -u http://localhost:3000 -v",
     "test": "vitest run",
+    "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -17,10 +18,10 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^20.0.0",
+    "@types/node": "^20.19.30",
     "eslint": "^9.0.0",
     "prettier": "^3.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^2.0.0"
+    "vitest": "^2.1.9"
   }
 }
