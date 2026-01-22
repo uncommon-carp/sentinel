@@ -1,0 +1,5 @@
+node_modules
+dist
+sentinel-out
+.DS_Store
+.env

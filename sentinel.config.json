@@ -1,0 +1,9 @@
+{
+  "target": {
+    "baseUrl": "https://example.com"
+  },
+  "suites": {
+    "headers": true,
+    "cors": true
+  }
+}
