@@ -2,25 +2,8 @@ import { describe, it, expect } from "vitest";
 import { headersSuite } from "../src/suites/headers.js";
 import { HttpClient } from "../src/http/client.js";
 import { createLogger } from "../src/core/logger.js";
-import type { SentinelConfig } from "../src/config/schema.js";
 import { mockFetchQueue } from "./helpers/fetchMock.js";
-
-function makeConfig(baseUrl: string): SentinelConfig {
-  return {
-    target: { baseUrl },
-    auth: { type: "none" },
-    suites: {
-      headers: true,
-      cors: true,
-      auth: true,
-      ratelimit: true,
-      injection: false
-    },
-    active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
-    output: { dir: "./sentinel-out", json: true, markdown: true },
-    verbose: false
-  };
-}
+import { makeConfig } from "./helpers/makeConfig.js";
 
 describe("headers suite", () => {
   it("emits findings when security headers are missing", async () => {

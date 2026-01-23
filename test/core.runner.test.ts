@@ -9,20 +9,10 @@ import type { SentinelConfig } from "../src/config/schema.js";
 import type { Suite } from "../src/core/types.js";
 import { jsonReporter } from "../src/reporters/json.js";
 import { markdownReporter } from "../src/reporters/markdown.js";
+import { makeConfig } from "./helpers/makeConfig.js";
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "sentinel-test-"));
-}
-
-function makeConfig(baseUrl: string): SentinelConfig {
-  return {
-    target: { baseUrl },
-    auth: { type: "none" },
-    suites: { headers: true, cors: true, auth: true, ratelimit: true, injection: false },
-    active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
-    output: { dir: "./sentinel-out", json: true, markdown: true },
-    verbose: false
-  };
 }
 
 describe("runner", () => {
