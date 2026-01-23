@@ -1,3 +1,22 @@
+/**
+ * HttpClient
+ *
+ * A thin, opinionated wrapper around `fetch` used by all Sentinel suites.
+ *
+ * Responsibilities:
+ * - Normalize request construction (base URL + relative paths)
+ * - Inject auth and default headers consistently
+ * - Enforce timeouts via AbortController
+ * - Return a simplified, deterministic response shape for suites
+ *
+ * Design notes:
+ * - This is intentionally *not* a full HTTP abstraction.
+ * - Retries, backoff, and concurrency limits should be applied at the
+ *   runner or suite level, not here.
+ * - Suites should treat this client as untrusted I/O and keep logic
+ *   side-effect free and deterministic.
+ */
+
 export type HttpRequest = {
   method: string;
   path?: string;
