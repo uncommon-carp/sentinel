@@ -23,7 +23,7 @@ export type RunMeta = {
 
 export type RunResult = {
   meta: RunMeta;
-  config: Record<string, unknown>; // sanitized snapshot
+  config: Record<string, unknown>;
   findings: Finding[];
 };
 

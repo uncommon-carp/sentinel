@@ -1,3 +1,21 @@
+/**
+ * Headers suite
+ *
+ * What it checks:
+ * - Presence of common HTTP security headers (e.g. HSTS, CSP, XCTO, Referrer-Policy)
+ *
+ * How it checks:
+ * - Passive: performs a simple GET to a baseline path (currently "/") and inspects headers
+ *
+ * Output:
+ * - Missing/weak headers are reported as findings with stable IDs (headers.missing_*)
+ * - Evidence includes URL and status (and can be extended with header values as needed)
+ *
+ * Notes:
+ * - This suite is intentionally conservative: it checks for “obviously missing” signals,
+ *   not full semantic validation of directives (e.g. CSP parsing) — that can be added later.
+ */
+
 import type { Suite, Finding } from "../core/types.js";
 
 export function headersSuite(): Suite {
