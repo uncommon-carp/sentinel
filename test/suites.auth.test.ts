@@ -62,12 +62,15 @@ describe("auth suite", () => {
   it("emits a finding when a cross-origin redirect is received", async () => {
     mockFetchQueue([
       {
-        status: 300,
+        status: 302,
         headers: { location: "https://example2.com" },
       }
     ]);
 
-    const config = makeConfig("https://api.example.com");
+    const config = makeConfig("https://api.example.com", "bearer");
+    // single test turn off
+    config.auth.compareUnauthed = false;
+
     const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
 
     const findings = await authSuite().run({
@@ -80,6 +83,7 @@ describe("auth suite", () => {
 
     expect(finding).toBeDefined();
     expect(finding?.suite).toBe("auth");
-    expect(finding?.severity).toBe("medium")
+    expect(finding?.severity).toBe("medium");
+    expect(finding?.evidence?.location).toBe("https://example2.com");
   });
 });
