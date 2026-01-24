@@ -59,4 +59,27 @@ describe("auth suite", () => {
     expect(finding?.suite).toBe("auth");
     expect(finding?.severity).toBe("medium");
   });
+  it("emits a finding when a cross-origin redirect is received", async () => {
+    mockFetchQueue([
+      {
+        status: 300,
+        headers: { location: "https://example2.com" },
+      }
+    ]);
+
+    const config = makeConfig("https://api.example.com");
+    const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+
+    const findings = await authSuite().run({
+      http,
+      config,
+      logger: createLogger({ verbose: false })
+    });
+
+    const finding = findings.find((f) => f.id === "auth.redirect_cross_origin");
+
+    expect(finding).toBeDefined();
+    expect(finding?.suite).toBe("auth");
+    expect(finding?.severity).toBe("medium")
+  });
 });
