@@ -31,6 +31,7 @@ export type SuiteContext = {
   http: import("../http/client.js").HttpClient;
   config: import("../config/schema.js").SentinelConfig;
   logger: import("./logger.js").Logger;
+  api?: import("../openapi/types.js").LoadedApiSpec;
 };
 
 export type Suite = {

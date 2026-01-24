@@ -5,6 +5,7 @@ import { buildSuites } from "../../suites/index.js";
 import { jsonReporter } from "../../reporters/json.js";
 import { markdownReporter } from "../../reporters/markdown.js";
 import { runScan } from "../../core/runner.js";
+import { loadOpenApi } from "../../openapi/load.js";
 
 export type ScanCommandOptions = {
   url: string;
@@ -59,10 +60,16 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
 
   const outputDir = opts.out ?? config.output.dir;
 
+  const api = config.target.openapi ? await loadOpenApi(config.target.openapi) : undefined;
+
+  if (api) {
+    logger.info("Loaded OpenAPI spec", { source: api.source, endpoints: api.endpoints.length });
+  }
+
   const result = await runScan({
     suites,
     reporters,
-    ctx: { http, config, logger },
+    ctx: { http, config, logger, ...(api ? { api } : {}) },
     sanitizedConfig: sanitized,
     outputDir,
     meta: {
