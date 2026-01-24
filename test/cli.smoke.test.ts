@@ -20,7 +20,8 @@ describe("CLI smoke", () => {
           "access-control-allow-credentials": "true"
         },
         bodyText: "ok"
-      } // cors suite
+      }, // cors suite
+      { status: 401, headers: {} }
     ]);
 
     const out = tmpDir();
