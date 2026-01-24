@@ -6,19 +6,19 @@ This document explains how Sentinel is structured, how data flows through the sy
 
 ```mermaid
 flowchart TD
-  A[CLI: sentinel scan] --> B[Config Loader<br/>file + CLI overrides + zod defaults]
-  B --> C{OpenAPI provided?}
-  C -- yes --> D[OpenAPI Loader<br/>parse + validate + dereference]
-  C -- no --> E[No OpenAPI metadata]
-  D --> F[Build SuiteContext<br/>http + config + logger + api]
+  A["CLI: sentinel scan"] --> B["Config Loader<br/>file + CLI overrides + zod defaults"]
+  B --> C{"OpenAPI provided?"}
+  C -- yes --> D["OpenAPI Loader<br/>parse + validate + dereference"]
+  C -- no --> E["No OpenAPI metadata"]
+  D --> F["Build SuiteContext<br/>http + config + logger + api"]
   E --> F
-  F --> G[Runner: runScan]
-  G --> H[Suites (sequential)]
-  H --> I[Findings[]]
-  I --> J[RunResult aggregation]
-  J --> K[Reporters]
-  K --> L[JSON report]
-  K --> M[Markdown report]
+  F --> G["Runner: runScan"]
+  G --> H["Suites<br/>(sequential)"]
+  H --> I["Findings[]"]
+  I --> J["RunResult aggregation"]
+  J --> K["Reporters"]
+  K --> L["JSON report"]
+  K --> M["Markdown report"]
 ```
 
 ---
