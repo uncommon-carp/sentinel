@@ -7,7 +7,12 @@ const AuthSchema = z
     basicUser: z.string().optional(),
     basicPass: z.string().optional(),
     apiKeyHeader: z.string().optional(),
-    apiKeyValue: z.string().optional()
+    apiKeyValue: z.string().optional(),
+
+    // Auth suite probes
+    probePath: z.string().default("/"),
+    // If true, we run an "auth vs no-auth" comparison when auth is configured.
+    compareUnauthed: z.boolean().default(true)
   })
   .default({ type: "none" });
 
