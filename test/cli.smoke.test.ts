@@ -21,7 +21,8 @@ describe("CLI smoke", () => {
         },
         bodyText: "ok"
       }, // cors suite
-      { status: 401, headers: {} }
+      { status: 401, headers: {} },
+      { status: 300, headers: {} }
     ]);
 
     const out = tmpDir();

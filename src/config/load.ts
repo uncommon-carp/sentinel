@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { SentinelConfigSchema, type SentinelConfig } from "./schema.js";
+import { expandEnvPlaceholders } from "./env.js";
 
 type LoadConfigArgs = {
   configPath?: string;
@@ -31,10 +32,11 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
   const filePath = path.resolve(process.cwd(), args.configPath ?? defaultPath);
 
   const fromFile = readJsonIfExists(filePath) ?? {};
+  const fileConfig = expandEnvPlaceholders(fromFile) as Record<string, unknown>;
   const merged = {
-    ...fromFile,
+    ...fileConfig,
     target: {
-      ...(typeof (fromFile as any).target === "object" ? (fromFile as any).target : {}),
+      ...(typeof (fileConfig as any).target === "object" ? (fileConfig as any).target : {}),
       ...(args.baseUrl ? { baseUrl: args.baseUrl } : {}),
       ...(args.openapi ? { openapi: args.openapi } : {})
     },
