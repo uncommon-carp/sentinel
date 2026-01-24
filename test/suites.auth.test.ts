@@ -84,6 +84,6 @@ describe("auth suite", () => {
     expect(finding).toBeDefined();
     expect(finding?.suite).toBe("auth");
     expect(finding?.severity).toBe("medium");
-    expect(finding?.evidence?.location).toBe("https://example2.com");
+    expect(finding?.evidence?.location).toBe("https://example2.com/");
   });
 });
