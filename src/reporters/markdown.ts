@@ -11,6 +11,7 @@ export function markdownReporter(): Reporter {
 
       const lines: string[] = [];
       lines.push(`# Sentinel Report`);
+      lines.push("");
       lines.push(`- Target: \`${result.meta.targetBaseUrl}\``);
       lines.push(`- Started: ${result.meta.startedAt}`);
       if (result.meta.finishedAt) lines.push(`- Finished: ${result.meta.finishedAt}`);
@@ -18,6 +19,7 @@ export function markdownReporter(): Reporter {
       lines.push("");
 
       lines.push(`## Summary`);
+      lines.push("");
       lines.push(`- Critical: ${counts.critical ?? 0}`);
       lines.push(`- High: ${counts.high ?? 0}`);
       lines.push(`- Medium: ${counts.medium ?? 0}`);
@@ -26,8 +28,9 @@ export function markdownReporter(): Reporter {
       lines.push("");
 
       lines.push(`## Findings`);
+      lines.push("");
       lines.push(`| Severity | Suite | Title |`);
-      lines.push(`|---|---|---|`);
+      lines.push(`| --- | --- | --- |`);
       for (const f of result.findings) {
         lines.push(`| ${f.severity} | ${f.suite} | ${f.title.replaceAll("|", "\\|")} |`);
       }
