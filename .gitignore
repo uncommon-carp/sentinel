@@ -3,3 +3,4 @@ dist
 sentinel-out
 .DS_Store
 .env
+sentinel.config.json
