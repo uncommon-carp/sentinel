@@ -1,3 +1,25 @@
+/**
+ * Auth suite
+ *
+ * Goal:
+ * - Provide high-signal, low-risk checks around HTTP authentication behavior.
+ *
+ * What it checks (v1):
+ * - 401 semantics: WWW-Authenticate should be present to advertise the auth scheme
+ * - Redirect safety: flag cross-origin redirects on an auth probe (credential leakage risk)
+ * - Enforcement heuristic: compare an "authed" request with an "unauthed" request
+ *   against a probe endpoint to detect possible missing auth protection
+ *
+ * Safety / scope:
+ * - Uses GET-only requests and does not follow redirects.
+ * - This suite is heuristic by design; false positives are possible if the probe path
+ *   is not expected to be protected.
+ *
+ * Configuration:
+ * - auth.probePath controls which endpoint is used for probing (default "/")
+ * - auth.compareUnauthed gates the "authed vs unauthed" comparison
+ */
+
 import type { Suite, Finding } from "../core/types.js";
 
 function isRedirect(status: number) {
@@ -11,16 +33,22 @@ export function authSuite(): Suite {
     async run(ctx): Promise<Finding[]> {
       const findings: Finding[] = [];
 
+      // Probe path should ideally point at an endpoint that *requires* auth.
+      // Defaults to "/" for safety, but may not be protected on many APIs.
       const probePath = ctx.config.auth.probePath ?? "/";
       const url = new URL(probePath, ctx.config.target.baseUrl).toString();
 
-      // 1) Baseline request (with configured auth)
+      // Baseline probe request: minimal, safe, and representative.
+      // Note: auth header injection is handled by HttpClient based on config.auth.
       const authedRes = await ctx.http.request({
         method: "GET",
         path: probePath
       });
 
-      // Redirect safety: we don't follow, but we can flag cross-origin redirects.
+      // Redirect handling:
+      // We do not follow redirects. If the target redirects across origins,
+      // naive clients can accidentally forward Authorization headers.
+      // Flag cross-origin redirects as a safety signal (not an exploit).
       if (isRedirect(authedRes.status)) {
         const location = authedRes.headers["location"];
         if (location) {
@@ -66,13 +94,14 @@ export function authSuite(): Suite {
         }
       }
 
-      // 3) Optional compare: if auth is configured, compare behavior with and without auth.
+      // Optional enforcement heuristic:
+      // If auth is configured, compare responses with auth vs. "cleared" auth.
+      // This is only meaningful when probePath is expected to be protected.
       const authConfigured = ctx.config.auth.type !== "none";
       if (authConfigured && (ctx.config.auth.compareUnauthed ?? true)) {
-        // Perform the same request but explicitly without auth headers.
-        // We bypass ctx.http's authHeader injection by using an absolute URL and an explicit empty auth header:
-        // simplest approach: create a one-off fetch via the HttpClient by passing headers that override auth
-        // BUT our HttpClient merges auth first then req.headers; so we can override Authorization with an empty string.
+        // HttpClient merges auth headers before per-request headers.
+        // To simulate an unauthenticated request without creating a second client,
+        // we override relevant credential headers with empty strings.
         const overrideHeaders: Record<string, string> = {};
         if (ctx.config.auth.type === "bearer") overrideHeaders["authorization"] = "";
         if (ctx.config.auth.type === "apiKey" && ctx.config.auth.apiKeyHeader) {
