@@ -32,6 +32,7 @@ export type SuiteContext = {
   config: import("../config/schema.js").SentinelConfig;
   logger: import("./logger.js").Logger;
   api?: import("../openapi/types.js").LoadedApiSpec;
+  selectedEndpoints?: import("./endpoints.js").SelectedEndpoint[];
 };
 
 export type Suite = {

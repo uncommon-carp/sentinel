@@ -24,6 +24,23 @@ const ActiveSchema = z
   })
   .default({ enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 });
 
+const ScopeSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+
+    methods: z.array(z.enum(["get", "head"])).default(["get", "head"]),
+
+    maxEndpoints: z.number().int().positive().default(20),
+
+    includePaths: z.array(z.string()).default([]),
+    excludePaths: z.array(z.string()).default([]),
+
+    prefer: z.array(z.string()).default(["^/health", "^/status", "^/me", "^/api/health"]),
+
+    seed: z.number().int().nonnegative().default(0)
+  })
+  .default({});
+
 export const SentinelConfigSchema = z.object({
   target: z.object({
     baseUrl: z.string().url(),
@@ -40,6 +57,7 @@ export const SentinelConfigSchema = z.object({
     })
     .partial()
     .default({}),
+  scope: ScopeSchema.default({}),
   active: ActiveSchema,
   output: z
     .object({
