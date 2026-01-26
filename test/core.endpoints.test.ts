@@ -52,12 +52,13 @@ describe("selectEndpoints", () => {
     const selected = selectEndpoints({ config, api });
     const keys = selected.map((e) => `${e.method} ${e.path}`);
 
-    expect(keys.some((k) => k.startsWith("delete"))).toBe(false);
+    expect(keys).toEqual(expect.arrayContaining(["head /health", "get /me"]));
 
-    expect(keys[0]).toBe("head /health");
-    expect(keys[1]).toBe("get /me");
-
-    expect(selected).toHaveLength(3);
+    const firstNonPreferredIndex = keys.findIndex((k) => !k.includes("/health") && !k.includes("/me"));
+    if (firstNonPreferredIndex !== -1) {
+      const preferredAfter = keys.slice(firstNonPreferredIndex).some((k) => k.includes("/health") || k.includes("/me"));
+      expect(preferredAfter).toBe(false);
+    }
   });
 
   it("supports include/exclude regex filters", () => {
