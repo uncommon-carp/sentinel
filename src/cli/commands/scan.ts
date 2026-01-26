@@ -6,6 +6,7 @@ import { jsonReporter } from "../../reporters/json.js";
 import { markdownReporter } from "../../reporters/markdown.js";
 import { runScan } from "../../core/runner.js";
 import { loadOpenApi } from "../../openapi/load.js";
+import { selectEndpoints } from "../../core/endpoints.js";
 
 export type ScanCommandOptions = {
   url: string;
@@ -66,10 +67,12 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     logger.info("Loaded OpenAPI spec", { source: api.source, endpoints: api.endpoints.length });
   }
 
+  const selectedEndpoints = selectEndpoints({ config, ...(api ? { api } : {}) })
+
   const result = await runScan({
     suites,
     reporters,
-    ctx: { http, config, logger, ...(api ? { api } : {}) },
+    ctx: { http, config, logger, selectedEndpoints, ...(api ? { api } : {}) },
     sanitizedConfig: sanitized,
     outputDir,
     meta: {
