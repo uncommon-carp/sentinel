@@ -1,6 +1,6 @@
 {
   "name": "@uncommon-carp/sentinel",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Sentinel: CLI API security scanner (passive + active checks)",
   "license": "MIT",
   "type": "module",
