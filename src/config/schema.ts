@@ -1,8 +1,8 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 const AuthSchema = z
   .object({
-    type: z.enum(["none", "bearer", "basic", "apiKey"]).default("none"),
+    type: z.enum(['none', 'bearer', 'basic', 'apiKey']).default('none'),
     bearerToken: z.string().optional(),
     basicUser: z.string().optional(),
     basicPass: z.string().optional(),
@@ -10,11 +10,11 @@ const AuthSchema = z
     apiKeyValue: z.string().optional(),
 
     // Auth suite probes
-    probePath: z.string().default("/"),
+    probePath: z.string().default('/'),
     // If true, we run an "auth vs no-auth" comparison when auth is configured.
     compareUnauthed: z.boolean().default(true)
   })
-  .default({ type: "none" });
+  .default({ type: 'none' });
 
 const ActiveSchema = z
   .object({
@@ -28,14 +28,14 @@ const ScopeSchema = z
   .object({
     enabled: z.boolean().default(false),
 
-    methods: z.array(z.enum(["get", "head"])).default(["get", "head"]),
+    methods: z.array(z.enum(['get', 'head'])).default(['get', 'head']),
 
     maxEndpoints: z.number().int().positive().default(20),
 
     includePaths: z.array(z.string()).default([]),
     excludePaths: z.array(z.string()).default([]),
 
-    prefer: z.array(z.string()).default(["^/health", "^/status", "^/me", "^/api/health"]),
+    prefer: z.array(z.string()).default(['^/health', '^/status', '^/me', '^/api/health']),
 
     seed: z.number().int().nonnegative().default(0)
   })
@@ -61,11 +61,11 @@ export const SentinelConfigSchema = z.object({
   active: ActiveSchema,
   output: z
     .object({
-      dir: z.string().default("./sentinel-out"),
+      dir: z.string().default('./sentinel-out'),
       json: z.boolean().default(true),
       markdown: z.boolean().default(true)
     })
-    .default({ dir: "./sentinel-out", json: true, markdown: true }),
+    .default({ dir: './sentinel-out', json: true, markdown: true }),
   verbose: z.boolean().default(false)
 });
 

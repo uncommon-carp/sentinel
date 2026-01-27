@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { vi } from 'vitest';
 
 type MockedFetchResponse = {
   status: number;
@@ -20,16 +20,15 @@ export function mockFetchQueue(responses: MockedFetchResponse[]) {
 
   const fetchMock = vi.fn(async () => {
     const next = queue.shift();
-    if (!next) throw new Error("mockFetchQueue: no more mocked responses in queue");
+    if (!next) throw new Error('mockFetchQueue: no more mocked responses in queue');
 
     return {
       status: next.status,
       headers: makeHeaders(next.headers ?? {}),
-      text: async () => next.bodyText ?? ""
+      text: async () => next.bodyText ?? ''
     } as unknown as Response;
   });
 
-  vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+  vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
   return fetchMock;
 }
-

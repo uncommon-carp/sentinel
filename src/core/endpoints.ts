@@ -10,18 +10,16 @@
  * Falls back to GET / when scope is disabled or no API metadata is available.
  */
 
-import type { SentinelConfig } from "../config/schema.js";
-import type { ApiEndpoint, LoadedApiSpec } from "../openapi/types.js";
+import type { SentinelConfig } from '../config/schema.js';
+import type { ApiEndpoint, LoadedApiSpec } from '../openapi/types.js';
 
 export type SelectedEndpoint = {
-  method: ApiEndpoint["method"];
-  path: ApiEndpoint["path"];
+  method: ApiEndpoint['method'];
+  path: ApiEndpoint['path'];
 };
 
 function compileRegexes(patterns: string[]): RegExp[] {
-  return patterns
-    .filter((p) => p.trim().length > 0)
-    .map((p) => new RegExp(p));
+  return patterns.filter((p) => p.trim().length > 0).map((p) => new RegExp(p));
 }
 
 function matchesAny(res: RegExp[], value: string): boolean {
@@ -49,7 +47,7 @@ export function selectEndpoints(args: {
   const { config, api } = args;
 
   if (!config.scope.enabled || !api?.endpoints?.length) {
-    return [{ method: "get", path: "/" }];
+    return [{ method: 'get', path: '/' }];
   }
 
   const allowedMethods = new Set(config.scope.methods.map((m) => m.toLowerCase()));
@@ -83,7 +81,7 @@ export function selectEndpoints(args: {
   const cap = Math.max(1, config.scope.maxEndpoints);
   const selected = filtered.slice(0, cap);
 
-  if (selected.length === 0) return [{ method: "get", path: "/" }];
+  if (selected.length === 0) return [{ method: 'get', path: '/' }];
 
   return selected;
 }

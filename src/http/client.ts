@@ -48,10 +48,10 @@ function headersToRecord(h: Headers): Record<string, string> {
 }
 
 export class HttpClient {
-  constructor(private opts: HttpClientOptions) { }
+  constructor(private opts: HttpClientOptions) {}
 
   async request(req: HttpRequest): Promise<HttpResponse> {
-    const url = req.url ?? new URL(req.path ?? "/", this.opts.baseUrl).toString();
+    const url = req.url ?? new URL(req.path ?? '/', this.opts.baseUrl).toString();
 
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), this.opts.timeoutMs);
@@ -71,7 +71,6 @@ export class HttpClient {
       };
 
       const res = await fetch(url, init);
-
 
       const bodyText = await res.text();
       return {

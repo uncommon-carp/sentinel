@@ -23,20 +23,20 @@
  *   apply severity policy, or suppress results.
  */
 
-import fs from "node:fs";
-import path from "node:path";
-import type { Reporter, RunResult, Suite, SuiteContext } from "./types.js";
+import fs from 'node:fs';
+import path from 'node:path';
+import type { Reporter, RunResult, Suite, SuiteContext } from './types.js';
 
 export async function runScan(args: {
   suites: Suite[];
   reporters: Reporter[];
   ctx: SuiteContext;
-  meta: RunResult["meta"];
+  meta: RunResult['meta'];
   sanitizedConfig: Record<string, unknown>;
   outputDir: string;
 }): Promise<RunResult> {
   const started = Date.now();
-  const findings: RunResult["findings"] = [];
+  const findings: RunResult['findings'] = [];
 
   // Execute suites sequentially to preserve determinism and limit request bursts.
   for (const suite of args.suites) {
@@ -64,9 +64,9 @@ export async function runScan(args: {
   // Dispatch result to each configured reporter.
   for (const reporter of args.reporters) {
     const rendered = await reporter.render(result);
-    const ext = reporter.name === "markdown" ? "md" : reporter.name;
+    const ext = reporter.name === 'markdown' ? 'md' : reporter.name;
     const outPath = path.join(args.outputDir, `sentinel-report.${ext}`);
-    fs.writeFileSync(outPath, rendered, "utf-8");
+    fs.writeFileSync(outPath, rendered, 'utf-8');
     args.ctx.logger.info(`Wrote report: ${outPath}`);
   }
 

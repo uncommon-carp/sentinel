@@ -1,12 +1,12 @@
-import { loadConfig } from "../../config/load.js";
-import { createLogger } from "../../core/logger.js";
-import { HttpClient } from "../../http/client.js";
-import { buildSuites } from "../../suites/index.js";
-import { jsonReporter } from "../../reporters/json.js";
-import { markdownReporter } from "../../reporters/markdown.js";
-import { runScan } from "../../core/runner.js";
-import { loadOpenApi } from "../../openapi/load.js";
-import { selectEndpoints } from "../../core/endpoints.js";
+import { loadConfig } from '../../config/load.js';
+import { createLogger } from '../../core/logger.js';
+import { HttpClient } from '../../http/client.js';
+import { buildSuites } from '../../suites/index.js';
+import { jsonReporter } from '../../reporters/json.js';
+import { markdownReporter } from '../../reporters/markdown.js';
+import { runScan } from '../../core/runner.js';
+import { loadOpenApi } from '../../openapi/load.js';
+import { selectEndpoints } from '../../core/endpoints.js';
 
 export type ScanCommandOptions = {
   url: string;
@@ -34,14 +34,14 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     baseUrl: config.target.baseUrl,
     timeoutMs: config.active.timeoutMs,
     defaultHeaders: {
-      "user-agent": "sentinel/0.1.0",
-      accept: "application/json,*/*"
+      'user-agent': 'sentinel/0.1.0',
+      accept: 'application/json,*/*'
     },
     authHeader: () => {
-      if (config.auth.type === "bearer" && config.auth.bearerToken) {
+      if (config.auth.type === 'bearer' && config.auth.bearerToken) {
         return { authorization: `Bearer ${config.auth.bearerToken}` };
       }
-      if (config.auth.type === "apiKey" && config.auth.apiKeyHeader && config.auth.apiKeyValue) {
+      if (config.auth.type === 'apiKey' && config.auth.apiKeyHeader && config.auth.apiKeyValue) {
         return { [config.auth.apiKeyHeader]: config.auth.apiKeyValue };
       }
       return {};
@@ -64,7 +64,7 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   const api = config.target.openapi ? await loadOpenApi(config.target.openapi) : undefined;
 
   if (api) {
-    logger.info("Loaded OpenAPI spec", { source: api.source, endpoints: api.endpoints.length });
+    logger.info('Loaded OpenAPI spec', { source: api.source, endpoints: api.endpoints.length });
   }
 
   const selectedEndpoints = selectEndpoints({ config, ...(api ? { api } : {}) });
@@ -78,10 +78,10 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     meta: {
       startedAt: new Date().toISOString(),
       targetBaseUrl: config.target.baseUrl,
-      version: "0.1.0"
+      version: '0.1.0'
     }
   });
 
-  const hasHigh = result.findings.some((f) => f.severity === "high" || f.severity === "critical");
+  const hasHigh = result.findings.some((f) => f.severity === 'high' || f.severity === 'critical');
   return { exitCode: hasHigh ? 2 : 0, outputDir };
 }
