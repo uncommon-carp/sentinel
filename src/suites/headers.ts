@@ -57,7 +57,6 @@ const REQUIRED_HEADERS: Array<HeaderRule> = [
     remediation:
       "Add a Referrer-Policy header (e.g. no-referrer or strict-origin-when-cross-origin)."
   }
-  // Add CSP etc later if you want, but CSP validation is nuanced.
 ];
 
 type Affected = { method: string; path: string; url: string; status: number };
@@ -74,15 +73,12 @@ export function headersSuite(): Suite {
           ? ctx.selectedEndpoints
           : [{ method: "get", path: "/" }];
 
-      // Budget: keep request volume predictable in CI.
       const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
       const toProbe = endpoints.slice(0, cap);
 
-      // Collect missing headers → affected endpoints
       const missingMap = new Map<string, Affected[]>();
 
       for (const ep of toProbe) {
-        // Use GET for now (safe + consistent). HEAD support varies.
         const res = await ctx.http.request({ method: "GET", path: ep.path });
 
         for (const rule of REQUIRED_HEADERS) {
@@ -95,7 +91,6 @@ export function headersSuite(): Suite {
         }
       }
 
-      // Emit one finding per missing header with list of affected endpoints
       for (const rule of REQUIRED_HEADERS) {
         const affected = missingMap.get(rule.id);
         if (!affected || affected.length === 0) continue;
