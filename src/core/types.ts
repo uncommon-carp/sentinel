@@ -1,5 +1,11 @@
-
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
+
+export type AffectedEndpoint = {
+  method: string;
+  path: string;
+  url: string;
+  status: number;
+};
 
 export type Finding = {
   id: string;

@@ -89,7 +89,7 @@ export function headersSuite(): Suite {
           const present = Boolean(res.headers[rule.header]);
           if (!present) {
             const arr = missingMap.get(rule.id) ?? [];
-            arr.push({ method: ep.method, path: ep.path, url: res.url, status: res.status });
+            arr.push({ method: "get", path: ep.path, url: res.url, status: res.status });
             missingMap.set(rule.id, arr);
           }
         }
@@ -110,6 +110,8 @@ export function headersSuite(): Suite {
           tags: ["headers", "http"],
           evidence: {
             header: rule.header,
+            count: affected.length,
+            probed: toProbe.length,
             affected
           }
         });
