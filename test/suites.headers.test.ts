@@ -10,7 +10,6 @@ describe("headers suite", () => {
     const fetchMock = mockFetchQueue([{
       status: 200,
       headers: {
-        // intentionally empty security headers
         "content-type": "application/json"
       },
       bodyText: "{}"
@@ -32,7 +31,6 @@ describe("headers suite", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(findings.length).toBeGreaterThan(0);
 
-    // We expect at least missing_hsts in your suite
     expect(findings.some((f) => f.id === "headers.missing_hsts")).toBe(true);
   });
 
@@ -62,5 +60,42 @@ describe("headers suite", () => {
     // missing_hsts and missing_xcto should be gone
     expect(findings.some((f) => f.id === "headers.missing_hsts")).toBe(false);
     expect(findings.some((f) => f.id === "headers.missing_xcto")).toBe(false);
+  });
+  it("aggregates missing header findings across selected endpoints", async () => {
+    mockFetchQueue([
+      { status: 200, headers: { "x-content-type-options": "nosniff" }, bodyText: "ok" },
+      { status: 200, headers: { "strict-transport-security": "max-age=31536000" }, bodyText: "ok" },
+      { status: 200, headers: {}, bodyText: "ok" }
+    ]);
+
+    const config = makeConfig("https://api.example.com");
+    const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+
+    const findings = await headersSuite().run({
+      http,
+      config,
+      logger: createLogger({ verbose: false }),
+      selectedEndpoints: [
+        { method: "get", path: "/a" },
+        { method: "get", path: "/b" },
+        { method: "get", path: "/c" }
+      ]
+    });
+
+    const hsts = findings.find((f) => f.id === "headers.missing_hsts");
+    const xcto = findings.find((f) => f.id === "headers.missing_xcto");
+
+    expect(hsts).toBeDefined();
+    expect(hsts?.evidence!.count).toBe(2);
+    expect(hsts?.evidence!.probed).toBe(3);
+    expect(xcto).toBeDefined();
+    expect(xcto?.evidence!.count).toBe(2);
+    expect(xcto?.evidence!.probed).toBe(3);
+
+    const hstsAffected = (hsts!.evidence as any).affected as Array<unknown>;
+    const xctoAffected = (xcto!.evidence as any).affected as Array<unknown>;
+
+    expect(hstsAffected).toHaveLength(2);
+    expect(xctoAffected).toHaveLength(2);
   });
 });
