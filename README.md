@@ -23,13 +23,37 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 
 ## Quickstart
 
-### Install dependencies
+### Install globally from NPM
 
 ```bash
+npm install -g @uncommon-carp/sentinel
+```
+
+### Run a scan
+
+```bash
+sentinel scan -u https://example.com
+```
+
+Reports will be written to:
+
+```pgsql
+./sentinel-out/
+  ├─ sentinel-report.json
+  └─ sentinel-report.md
+```
+
+## Run From Source
+
+### Clone the repo and install dependencies
+
+```bash
+git clone https://github.com/uncommon-carp/sentinel.git
+cd sentinel
 npm install
 ```
 
-### Build
+### Build the project
 
 ```bash
 npm run build
@@ -39,14 +63,6 @@ npm run build
 
 ```bash
 node dist/cli/index.js scan -u https://example.com
-```
-
-Reports will be written to:
-
-```pgsql
-./sentinel-out/
-  ├─ sentinel-report.json
-  └─ sentinel-report.md
 ```
 
 ---
@@ -119,14 +135,14 @@ Example:
 
 When an OpenAPI spec is provided (`--openapi`), Scope controls which endpoints are tested:
 
-| Option         | Description                                              |
-| -------------- | -------------------------------------------------------- |
-| `enabled`      | Enable scoped endpoint selection (default: false)        |
-| `methods`      | HTTP methods to include (default: `["get", "head"]`)     |
-| `maxEndpoints` | Cap on endpoints to test per suite (default: 20)         |
-| `includePaths` | Regex patterns to include (empty = include all)          |
-| `excludePaths` | Regex patterns to exclude                                |
-| `prefer`       | Regex patterns for preferred endpoints (tested first)    |
+| Option         | Description                                           |
+| -------------- | ----------------------------------------------------- |
+| `enabled`      | Enable scoped endpoint selection (default: false)     |
+| `methods`      | HTTP methods to include (default: `["get", "head"]`)  |
+| `maxEndpoints` | Cap on endpoints to test per suite (default: 20)      |
+| `includePaths` | Regex patterns to include (empty = include all)       |
+| `excludePaths` | Regex patterns to exclude                             |
+| `prefer`       | Regex patterns for preferred endpoints (tested first) |
 
 When disabled or no OpenAPI spec is available, suites fall back to probing `GET /`.
 
