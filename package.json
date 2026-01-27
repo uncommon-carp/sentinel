@@ -1,5 +1,5 @@
 {
-  "name": "sentinel-cli",
+  "name": "@uncommon-carp/sentinel",
   "version": "0.1.0",
   "description": "Sentinel: CLI API security scanner (passive + active checks)",
   "license": "MIT",
@@ -22,6 +22,9 @@
     "headers",
     "auth"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },
