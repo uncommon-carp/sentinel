@@ -2,10 +2,30 @@
   "name": "sentinel-cli",
   "version": "0.1.0",
   "description": "Sentinel: CLI API security scanner (passive + active checks)",
+  "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uncommon-carp/sentinel.git"
+  },
+  "homepage": "https://github.com/uncommon-carp/sentinel#readme",
+  "bugs": {
+    "url": "https://github.com/uncommon-carp/sentinel/issues"
+  },
+  "keywords": [
+    "security",
+    "api",
+    "scanner",
+    "openapi",
+    "cli",
+    "cors",
+    "headers",
+    "auth"
+  ],
   "engines": {
     "node": ">=18"
   },
+  "prepare": "npm run build",
   "bin": {
     "sentinel": "./dist/cli/index.js"
   },
