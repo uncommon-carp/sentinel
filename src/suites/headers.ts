@@ -16,46 +16,45 @@
  *   not full semantic validation of directives (e.g. CSP parsing) — that can be added later.
  */
 
-import type { Suite, Finding, Severity } from "../core/types.js";
+import type { Suite, Finding, Severity } from '../core/types.js';
 
 type HeaderRule = {
-  id: `headers.${string}`
+  id: `headers.${string}`;
   header: string;
-  severity: Severity
+  severity: Severity;
   title: string;
   description: string;
   remediation: string;
-}
+};
 
 const REQUIRED_HEADERS: Array<HeaderRule> = [
   {
-    id: "headers.missing_hsts",
-    header: "strict-transport-security",
-    severity: "medium",
-    title: "Missing Strict-Transport-Security (HSTS)",
+    id: 'headers.missing_hsts',
+    header: 'strict-transport-security',
+    severity: 'medium',
+    title: 'Missing Strict-Transport-Security (HSTS)',
     description:
-      "HSTS helps enforce HTTPS by telling browsers to only connect over TLS for a period of time.",
+      'HSTS helps enforce HTTPS by telling browsers to only connect over TLS for a period of time.',
     remediation:
-      "Add a Strict-Transport-Security header on HTTPS responses (e.g. max-age=31536000; includeSubDomains)."
+      'Add a Strict-Transport-Security header on HTTPS responses (e.g. max-age=31536000; includeSubDomains).'
   },
   {
-    id: "headers.missing_xcto",
-    header: "x-content-type-options",
-    severity: "low",
-    title: "Missing X-Content-Type-Options",
-    description:
-      "X-Content-Type-Options: nosniff helps prevent MIME type sniffing in browsers.",
-    remediation: "Add X-Content-Type-Options: nosniff."
+    id: 'headers.missing_xcto',
+    header: 'x-content-type-options',
+    severity: 'low',
+    title: 'Missing X-Content-Type-Options',
+    description: 'X-Content-Type-Options: nosniff helps prevent MIME type sniffing in browsers.',
+    remediation: 'Add X-Content-Type-Options: nosniff.'
   },
   {
-    id: "headers.missing_referrer_policy",
-    header: "referrer-policy",
-    severity: "low",
-    title: "Missing Referrer-Policy",
+    id: 'headers.missing_referrer_policy',
+    header: 'referrer-policy',
+    severity: 'low',
+    title: 'Missing Referrer-Policy',
     description:
-      "Referrer-Policy controls how much referrer information is sent with requests to other origins.",
+      'Referrer-Policy controls how much referrer information is sent with requests to other origins.',
     remediation:
-      "Add a Referrer-Policy header (e.g. no-referrer or strict-origin-when-cross-origin)."
+      'Add a Referrer-Policy header (e.g. no-referrer or strict-origin-when-cross-origin).'
   }
 ];
 
@@ -63,15 +62,15 @@ type Affected = { method: string; path: string; url: string; status: number };
 
 export function headersSuite(): Suite {
   return {
-    name: "headers",
-    description: "Checks for baseline HTTP security headers across selected endpoints.",
+    name: 'headers',
+    description: 'Checks for baseline HTTP security headers across selected endpoints.',
     async run(ctx): Promise<Finding[]> {
       const findings: Finding[] = [];
 
       const endpoints =
         ctx.selectedEndpoints && ctx.selectedEndpoints.length > 0
           ? ctx.selectedEndpoints
-          : [{ method: "get", path: "/" }];
+          : [{ method: 'get', path: '/' }];
 
       const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
       const toProbe = endpoints.slice(0, cap);
@@ -79,13 +78,13 @@ export function headersSuite(): Suite {
       const missingMap = new Map<string, Affected[]>();
 
       for (const ep of toProbe) {
-        const res = await ctx.http.request({ method: "GET", path: ep.path });
+        const res = await ctx.http.request({ method: 'GET', path: ep.path });
 
         for (const rule of REQUIRED_HEADERS) {
           const present = Boolean(res.headers[rule.header]);
           if (!present) {
             const arr = missingMap.get(rule.id) ?? [];
-            arr.push({ method: "get", path: ep.path, url: res.url, status: res.status });
+            arr.push({ method: 'get', path: ep.path, url: res.url, status: res.status });
             missingMap.set(rule.id, arr);
           }
         }
@@ -101,8 +100,8 @@ export function headersSuite(): Suite {
           severity: rule.severity,
           description: rule.description,
           remediation: rule.remediation,
-          suite: "headers",
-          tags: ["headers", "http"],
+          suite: 'headers',
+          tags: ['headers', 'http'],
           evidence: {
             header: rule.header,
             count: affected.length,
@@ -116,4 +115,3 @@ export function headersSuite(): Suite {
     }
   };
 }
-

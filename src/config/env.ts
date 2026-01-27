@@ -5,7 +5,7 @@ const ENV_PATTERN = /^\$\{([A-Z0-9_]+)\}$/i;
  * Only exact-string matches are expanded (no partial templating).
  */
 export function expandEnvPlaceholders(value: unknown): unknown {
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     const m = value.match(ENV_PATTERN);
     if (!m) return value;
 
@@ -21,7 +21,7 @@ export function expandEnvPlaceholders(value: unknown): unknown {
     return value.map(expandEnvPlaceholders);
   }
 
-  if (value && typeof value === "object") {
+  if (value && typeof value === 'object') {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>).map(([k, v]) => [
         k,

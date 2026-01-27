@@ -11,7 +11,8 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 - 🔍 Modular security test suites
   - HTTP security headers
   - CORS misconfiguration detection
-  - (Planned) Auth behavior, rate limiting, injection probes
+  - Auth behavior (401 semantics, cross-origin redirects, enforcement heuristics)
+  - (Planned) Rate limiting, injection probes
 - 📦 Typed, validated configuration
 - 🧱 Clean internal architecture (CLI → runner → suites → reporters)
 - 📝 JSON + Markdown report output
@@ -92,6 +93,14 @@ Example:
     "maxRequestsPerSuite": 40,
     "timeoutMs": 8000
   },
+  "scope": {
+    "enabled": true,
+    "methods": ["get", "head"],
+    "maxEndpoints": 20,
+    "includePaths": [],
+    "excludePaths": ["/admin", "/internal"],
+    "prefer": ["/health", "/status", "/ping"]
+  },
   "output": {
     "dir": "./sentinel-out",
     "json": true,
@@ -103,20 +112,37 @@ Example:
 
 - Config is validated with a schema at runtime.
 - Secrets are sanitized before being written to reports.
-- CLI flags override config file values
+- CLI flags override config file values.
+- Environment variables can be interpolated using `${VAR}` syntax.
+
+### Scope
+
+When an OpenAPI spec is provided (`--openapi`), Scope controls which endpoints are tested:
+
+| Option         | Description                                              |
+| -------------- | -------------------------------------------------------- |
+| `enabled`      | Enable scoped endpoint selection (default: false)        |
+| `methods`      | HTTP methods to include (default: `["get", "head"]`)     |
+| `maxEndpoints` | Cap on endpoints to test per suite (default: 20)         |
+| `includePaths` | Regex patterns to include (empty = include all)          |
+| `excludePaths` | Regex patterns to exclude                                |
+| `prefer`       | Regex patterns for preferred endpoints (tested first)    |
+
+When disabled or no OpenAPI spec is available, suites fall back to probing `GET /`.
 
 ---
 
 ## Architecture Overview
 
-```pgsql
+```
 CLI
  └─ config loader + validation
      └─ runner
          ├─ HTTP client wrapper
          ├─ security suites
          │    ├─ headers
-         │    └─ cors
+         │    ├─ cors
+         │    └─ auth
          └─ reporters
               ├─ JSON
               └─ Markdown

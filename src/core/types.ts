@@ -1,4 +1,4 @@
-export type Severity = "info" | "low" | "medium" | "high" | "critical";
+export type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
 
 export type AffectedEndpoint = {
   method: string;
@@ -34,11 +34,11 @@ export type RunResult = {
 };
 
 export type SuiteContext = {
-  http: import("../http/client.js").HttpClient;
-  config: import("../config/schema.js").SentinelConfig;
-  logger: import("./logger.js").Logger;
-  api?: import("../openapi/types.js").LoadedApiSpec;
-  selectedEndpoints?: import("./endpoints.js").SelectedEndpoint[];
+  http: import('../http/client.js').HttpClient;
+  config: import('../config/schema.js').SentinelConfig;
+  logger: import('./logger.js').Logger;
+  api?: import('../openapi/types.js').LoadedApiSpec;
+  selectedEndpoints?: import('./endpoints.js').SelectedEndpoint[];
 };
 
 export type Suite = {

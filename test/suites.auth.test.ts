@@ -1,12 +1,12 @@
-import { describe, it, expect } from "vitest";
-import { authSuite } from "../src/suites/auth.js";
-import { HttpClient } from "../src/http/client.js";
-import { createLogger } from "../src/core/logger.js";
-import { mockFetchQueue } from "./helpers/fetchMock.js";
-import { makeConfig } from "./helpers/makeConfig.js";
+import { describe, it, expect } from 'vitest';
+import { authSuite } from '../src/suites/auth.js';
+import { HttpClient } from '../src/http/client.js';
+import { createLogger } from '../src/core/logger.js';
+import { mockFetchQueue } from './helpers/fetchMock.js';
+import { makeConfig } from './helpers/makeConfig.js';
 
-describe("auth suite", () => {
-  it("emits a finding when a 401 missing WWW-Authenticate is received", async () => {
+describe('auth suite', () => {
+  it('emits a finding when a 401 missing WWW-Authenticate is received', async () => {
     mockFetchQueue([
       {
         status: 401,
@@ -14,8 +14,11 @@ describe("auth suite", () => {
       }
     ]);
 
-    const config = makeConfig("https://api.example.com");
-    const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+    const config = makeConfig('https://api.example.com');
+    const http = new HttpClient({
+      baseUrl: config.target.baseUrl,
+      timeoutMs: config.active.timeoutMs
+    });
 
     const findings = await authSuite().run({
       http,
@@ -24,29 +27,32 @@ describe("auth suite", () => {
     });
 
     expect(findings).toHaveLength(1);
-    const finding = findings.find((f) => f.id === "auth.401_missing_www_authenticate");
+    const finding = findings.find((f) => f.id === 'auth.401_missing_www_authenticate');
 
     expect(finding).toBeDefined();
-    expect(finding?.suite).toBe("auth");
-    expect(finding?.severity).toBe("low");
+    expect(finding?.suite).toBe('auth');
+    expect(finding?.severity).toBe('low');
     expect(finding?.evidence).toMatchObject({
       status: 401
     });
   });
-  it("emits a finding when auth vs unauthed request yield same result", async () => {
+  it('emits a finding when auth vs unauthed request yield same result', async () => {
     mockFetchQueue([
       {
         status: 200,
-        bodyText: "ok"
+        bodyText: 'ok'
       },
       {
         status: 200,
-        bodyText: "ok"
+        bodyText: 'ok'
       }
     ]);
 
-    const config = makeConfig("https://api.example.com", "bearer");
-    const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+    const config = makeConfig('https://api.example.com', 'bearer');
+    const http = new HttpClient({
+      baseUrl: config.target.baseUrl,
+      timeoutMs: config.active.timeoutMs
+    });
 
     const findings = await authSuite().run({
       http,
@@ -54,24 +60,27 @@ describe("auth suite", () => {
       logger: createLogger({ verbose: false })
     });
 
-    const finding = findings.find((f) => f.id === "auth.possible_bypass_probe");
+    const finding = findings.find((f) => f.id === 'auth.possible_bypass_probe');
     expect(finding).toBeDefined();
-    expect(finding?.suite).toBe("auth");
-    expect(finding?.severity).toBe("medium");
+    expect(finding?.suite).toBe('auth');
+    expect(finding?.severity).toBe('medium');
   });
-  it("emits a finding when a cross-origin redirect is received", async () => {
+  it('emits a finding when a cross-origin redirect is received', async () => {
     mockFetchQueue([
       {
         status: 302,
-        headers: { location: "https://example2.com" },
+        headers: { location: 'https://example2.com' }
       }
     ]);
 
-    const config = makeConfig("https://api.example.com", "bearer");
+    const config = makeConfig('https://api.example.com', 'bearer');
     // single test turn off
     config.auth.compareUnauthed = false;
 
-    const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+    const http = new HttpClient({
+      baseUrl: config.target.baseUrl,
+      timeoutMs: config.active.timeoutMs
+    });
 
     const findings = await authSuite().run({
       http,
@@ -79,11 +88,11 @@ describe("auth suite", () => {
       logger: createLogger({ verbose: false })
     });
 
-    const finding = findings.find((f) => f.id === "auth.redirect_cross_origin");
+    const finding = findings.find((f) => f.id === 'auth.redirect_cross_origin');
 
     expect(finding).toBeDefined();
-    expect(finding?.suite).toBe("auth");
-    expect(finding?.severity).toBe("medium");
-    expect(finding?.evidence?.location).toBe("https://example2.com/");
+    expect(finding?.suite).toBe('auth');
+    expect(finding?.severity).toBe('medium');
+    expect(finding?.evidence?.location).toBe('https://example2.com/');
   });
 });

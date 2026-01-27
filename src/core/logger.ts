@@ -7,16 +7,16 @@ export type Logger = {
 
 export function createLogger(opts: { verbose: boolean }): Logger {
   const emit = (level: string, msg: string, data?: Record<string, unknown>) => {
-    const payload = data ? ` ${JSON.stringify(data)}` : "";
+    const payload = data ? ` ${JSON.stringify(data)}` : '';
     console.log(`[${level}] ${msg}${payload}`);
   };
 
   return {
-    info: (m, d) => emit("INFO", m, d),
-    warn: (m, d) => emit("WARN", m, d),
-    error: (m, d) => emit("ERROR", m, d),
+    info: (m, d) => emit('INFO', m, d),
+    warn: (m, d) => emit('WARN', m, d),
+    error: (m, d) => emit('ERROR', m, d),
     debug: (m, d) => {
-      if (opts.verbose) emit("DEBUG", m, d);
-    },
+      if (opts.verbose) emit('DEBUG', m, d);
+    }
   };
 }
