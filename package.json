@@ -3,9 +3,18 @@
   "version": "0.1.0",
   "description": "Sentinel: CLI API security scanner (passive + active checks)",
   "type": "module",
-  "bin": {
-    "sentinel": "dist/cli/index.js"
+  "engines": {
+    "node": ">=18"
   },
+  "bin": {
+    "sentinel": "./dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
