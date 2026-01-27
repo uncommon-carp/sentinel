@@ -1,3 +1,15 @@
+/**
+ * Endpoint selection (Scope)
+ *
+ * When an OpenAPI spec is available, this module selects which endpoints to test
+ * rather than blindly probing the entire API surface. The goal is bounded, safe
+ * expansion: test representative endpoints without overwhelming the target or
+ * the scan duration.
+ *
+ * Selection priority: preferred paths (e.g. /health) → shorter paths → alphabetical.
+ * Falls back to GET / when scope is disabled or no API metadata is available.
+ */
+
 import type { SentinelConfig } from "../config/schema.js";
 import type { ApiEndpoint, LoadedApiSpec } from "../openapi/types.js";
 

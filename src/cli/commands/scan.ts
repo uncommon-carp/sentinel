@@ -67,7 +67,7 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     logger.info("Loaded OpenAPI spec", { source: api.source, endpoints: api.endpoints.length });
   }
 
-  const selectedEndpoints = selectEndpoints({ config, ...(api ? { api } : {}) })
+  const selectedEndpoints = selectEndpoints({ config, ...(api ? { api } : {}) });
 
   const result = await runScan({
     suites,
