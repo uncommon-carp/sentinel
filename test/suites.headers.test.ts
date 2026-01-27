@@ -89,6 +89,8 @@ describe("headers suite", () => {
     expect(hsts?.evidence!.count).toBe(2);
     expect(hsts?.evidence!.probed).toBe(3);
     expect(xcto).toBeDefined();
+    expect(xcto?.evidence!.count).toBe(2);
+    expect(xcto?.evidence!.probed).toBe(3);
 
     const hstsAffected = (hsts!.evidence as any).affected as Array<unknown>;
     const xctoAffected = (xcto!.evidence as any).affected as Array<unknown>;
