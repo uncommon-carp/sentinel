@@ -51,7 +51,8 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   const suites = buildSuites({
     headers: config.suites.headers ?? true,
     cors: config.suites.cors ?? true,
-    auth: config.suites.auth ?? true
+    auth: config.suites.auth ?? true,
+    ratelimit: config.suites.ratelimit ?? true
   });
 
   const reporters = [

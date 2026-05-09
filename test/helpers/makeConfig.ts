@@ -13,6 +13,7 @@ export function makeConfig(
       bearerToken: authType === 'bearer' ? 'test-token' : undefined
     },
     suites: { headers: true, cors: true, auth: true, ratelimit: true, injection: false },
+    ratelimit: { probePath: '/', burstCount: 10, delayMs: 0 },
     active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
     output: { dir: './sentinel-out', json: true, markdown: true },
     verbose: false
