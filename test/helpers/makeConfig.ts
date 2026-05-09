@@ -13,7 +13,7 @@ export function makeConfig(
       bearerToken: authType === 'bearer' ? 'test-token' : undefined
     },
     suites: { headers: true, cors: true, auth: true, ratelimit: true, injection: false },
-    ratelimit: { probePath: '/', burstCount: 10, delayMs: 0 },
+    ratelimit: { burstCount: 10, delayMs: 0 },
     scope: {
       enabled: false,
       methods: ['get', 'head'],
