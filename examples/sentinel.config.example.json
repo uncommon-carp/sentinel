@@ -1,9 +1,12 @@
 {
   "target": {
-    "baseUrl": "https://api.example.com"
+    "baseUrl": "https://api.example.com",
+    "openapi": "./openapi.json"
   },
   "auth": {
-    "type": "none"
+    "type": "none",
+    "probePaths": ["/"],
+    "compareUnauthed": true
   },
   "suites": {
     "headers": true,
@@ -11,6 +14,15 @@
     "auth": true,
     "ratelimit": true,
     "injection": false
+  },
+  "scope": {
+    "enabled": false,
+    "methods": ["get", "head"],
+    "maxEndpoints": 20,
+    "includePaths": [],
+    "excludePaths": [],
+    "prefer": ["^/health", "^/status", "^/me", "^/api/health"],
+    "seed": 0
   },
   "active": {
     "enabled": true,

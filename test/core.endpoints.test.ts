@@ -6,7 +6,7 @@ import type { LoadedApiSpec } from '../src/openapi/types.js';
 function makeConfig(): SentinelConfig {
   return {
     target: { baseUrl: 'https://api.example.com' },
-    auth: { type: 'none', probePath: '/', compareUnauthed: false },
+    auth: { type: 'none', probePaths: ['/'], compareUnauthed: false },
     suites: { headers: true, cors: true, auth: true, ratelimit: true, injection: false },
     active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
     output: { dir: './sentinel-out', json: true, markdown: true },
