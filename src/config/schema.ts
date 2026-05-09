@@ -24,7 +24,6 @@ const ActiveSchema = z
 
 const RateLimitSchema = z
   .object({
-    probePath: z.string().default('/'),
     burstCount: z.number().int().min(2).max(50).default(10),
     delayMs: z.number().int().min(0).max(2000).default(75)
   })

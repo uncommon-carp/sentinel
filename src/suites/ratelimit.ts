@@ -3,14 +3,13 @@
  *
  * Checks:
  * - Header scan: probes selected endpoints for X-RateLimit-* / RateLimit-* headers
- * - Burst probe: sequential requests to probePath; flags missing 429 or headers
+ * - Burst probe: sequential requests to the first selected endpoint; flags missing 429 or headers
  * - Retry-After: flags 429 responses that omit Retry-After
  *
  * Burst is sequential with delay (default 75ms) — no concurrent hammering.
  * Burst size is capped at min(ratelimit.burstCount, active.maxRequestsPerSuite).
  *
  * Configuration:
- * - ratelimit.probePath   endpoint for the burst probe (default "/")
  * - ratelimit.burstCount  number of burst requests (default 10)
  * - ratelimit.delayMs     ms between burst requests (default 75)
  */
@@ -83,7 +82,7 @@ export function rateLimitSuite(): Suite {
       // Phase 2: burst probe against a single configurable endpoint.
       // Requests are sent sequentially with a short inter-request delay to remain
       // predictable and safe while still being fast enough to trigger most rate limiters.
-      const probePath = ctx.config.ratelimit.probePath ?? '/';
+      const probePath = toProbe[0]?.path ?? '/';
       const burstCount = Math.min(Math.max(2, ctx.config.ratelimit.burstCount ?? 10), cap);
       const delayMs = ctx.config.ratelimit.delayMs ?? 75;
 

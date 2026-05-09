@@ -5,10 +5,9 @@ import { createLogger } from '../src/core/logger.js';
 import { mockFetchQueue } from './helpers/fetchMock.js';
 import { makeConfig } from './helpers/makeConfig.js';
 
-function makeCtx(overrides?: { burstCount?: number; probePath?: string }) {
+function makeCtx(overrides?: { burstCount?: number }) {
   const config = makeConfig('https://api.example.com');
   config.ratelimit.burstCount = overrides?.burstCount ?? 3;
-  config.ratelimit.probePath = overrides?.probePath ?? '/';
 
   const http = new HttpClient({
     baseUrl: config.target.baseUrl,
