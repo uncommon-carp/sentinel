@@ -1,25 +1,18 @@
 /**
  * Rate limit suite
  *
- * What it checks:
- * - Header presence: probes selected endpoints for standard rate-limit response headers
- *   (X-RateLimit-*, RateLimit-*). Absent headers across all probed endpoints is a soft signal.
- * - Burst probe: sends a sequential burst of requests to probePath with a configurable
- *   inter-request delay, then checks whether a 429 was returned or rate-limit headers
- *   appeared. No 429 and no headers after the burst is a stronger signal.
- * - Retry-After semantics: if a 429 is observed, flags the absence of Retry-After.
+ * Checks:
+ * - Header scan: probes selected endpoints for X-RateLimit-* / RateLimit-* headers
+ * - Burst probe: sequential requests to probePath; flags missing 429 or headers
+ * - Retry-After: flags 429 responses that omit Retry-After
  *
- * Safety / scope:
- * - Burst requests are sequential with a configurable delay between each (default 75ms).
- *   True concurrent hammering is intentionally avoided — sequential-with-delay is more
- *   predictable, still fast enough to trigger most rate limiters, and easier to explain
- *   in the report.
- * - Burst size is capped at min(ratelimit.burstCount, active.maxRequestsPerSuite).
+ * Burst is sequential with delay (default 75ms) — no concurrent hammering.
+ * Burst size is capped at min(ratelimit.burstCount, active.maxRequestsPerSuite).
  *
  * Configuration:
  * - ratelimit.probePath   endpoint for the burst probe (default "/")
  * - ratelimit.burstCount  number of burst requests (default 10)
- * - ratelimit.delayMs     ms to wait between burst requests (default 75)
+ * - ratelimit.delayMs     ms between burst requests (default 75)
  */
 
 import type { Suite, Finding } from '../core/types.js';
@@ -50,8 +43,7 @@ export function rateLimitSuite(): Suite {
       const findings: Finding[] = [];
       const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
 
-      // Phase 1: header scan across selected endpoints.
-      // Checks whether any endpoint advertises rate-limit quota headers.
+      // Phase 1: scan endpoints for rate-limit headers.
       const endpoints =
         ctx.selectedEndpoints && ctx.selectedEndpoints.length > 0
           ? ctx.selectedEndpoints

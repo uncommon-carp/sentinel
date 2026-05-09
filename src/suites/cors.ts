@@ -1,22 +1,11 @@
 /**
  * CORS suite
  *
- * What it checks:
- * - High-risk CORS misconfigurations such as:
- *   - wildcard ACAO combined with credentials
- *   - reflected Origin (overly permissive allow-origin behavior)
+ * Sends a GET with a synthetic Origin header and checks for:
+ * - Wildcard ACAO combined with credentials
+ * - Reflected Origin (overly permissive ACAO)
  *
- * How it checks:
- * - Active-ish but low risk: sends a GET with a synthetic Origin header and inspects
- *   Access-Control-* response headers. No state-changing requests are performed.
- *
- * Output:
- * - Emits findings like cors.wildcard_with_credentials and cors.origin_reflection
- * - Evidence includes the request Origin and the observed ACAO/ACC header values
- *
- * Notes:
- * - This is a heuristic suite. It’s designed to flag dangerous patterns without
- *   attempting full browser CORS simulation.
+ * Heuristic — flags dangerous patterns without full browser CORS simulation.
  */
 
 import type { Suite, Finding } from '../core/types.js';
@@ -52,7 +41,6 @@ export function corsSuite(): Suite {
         });
       }
 
-      // Very basic reflection check
       if (acao === origin) {
         findings.push({
           id: 'cors.origin_reflection',
