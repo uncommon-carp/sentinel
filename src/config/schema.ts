@@ -24,6 +24,14 @@ const ActiveSchema = z
   })
   .default({ enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 });
 
+const RateLimitSchema = z
+  .object({
+    probePath: z.string().default('/'),
+    burstCount: z.number().int().min(2).max(50).default(10),
+    delayMs: z.number().int().min(0).max(2000).default(75)
+  })
+  .default({});
+
 const ScopeSchema = z
   .object({
     enabled: z.boolean().default(false),
@@ -47,6 +55,7 @@ export const SentinelConfigSchema = z.object({
     openapi: z.string().optional()
   }),
   auth: AuthSchema,
+  ratelimit: RateLimitSchema,
   suites: z
     .object({
       headers: z.boolean().default(true),

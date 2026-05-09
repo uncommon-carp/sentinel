@@ -12,7 +12,7 @@ function tmpDir() {
 describe('CLI smoke', () => {
   it('runs scanCommand and writes reports', async () => {
     mockFetchQueue([
-      { status: 200, headers: { 'content-type': 'text/html' }, bodyText: 'ok' }, // headers suite
+      { status: 200, headers: { 'content-type': 'text/html' }, bodyText: 'ok' }, // headers
       {
         status: 200,
         headers: {
@@ -20,15 +20,26 @@ describe('CLI smoke', () => {
           'access-control-allow-credentials': 'true'
         },
         bodyText: 'ok'
-      }, // cors suite
-      { status: 401, headers: {} },
-      { status: 300, headers: {} }
+      }, // cors
+      { status: 401, headers: {} }, // auth probe
+      { status: 200, headers: {} }, // ratelimit phase 1
+      { status: 200, headers: {} }, // ratelimit burst 1
+      { status: 200, headers: {} } //  ratelimit burst 2
     ]);
 
     const out = tmpDir();
 
+    // Pin burstCount and delayMs so the smoke test stays fast and mock count is predictable.
+    const configPath = path.join(out, 'sentinel.config.json');
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ ratelimit: { burstCount: 2, delayMs: 0 } }),
+      'utf-8'
+    );
+
     const { exitCode, outputDir } = await scanCommand({
       url: 'https://api.example.com',
+      config: configPath,
       out,
       verbose: true
     });
