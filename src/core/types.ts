@@ -14,7 +14,6 @@ export type Finding = {
   description: string;
   remediation?: string;
   evidence?: Record<string, unknown>;
-  location?: { method?: string; path?: string; url?: string };
   tags?: string[];
   suite: string;
 };
