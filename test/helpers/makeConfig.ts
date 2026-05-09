@@ -8,7 +8,7 @@ export function makeConfig(
     target: { baseUrl },
     auth: {
       type: authType,
-      probePath: '/',
+      probePaths: ['/'],
       compareUnauthed: authType !== 'none',
       bearerToken: authType === 'bearer' ? 'test-token' : undefined
     },
