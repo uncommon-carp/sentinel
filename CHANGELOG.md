@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## Unreleased
 
+## 0.2.2 - 2026-05-11
+
+### Changed
+
+- **Publish workflow** (`.github/workflows/publish.yml`): automated npm publish and GitHub Release creation on version tag push (`v*`). Uses npm OIDC trusted publishing — no stored access token required.
+
 ## 0.2.1 - 2026-05-11
 
 ### Changed
