@@ -82,6 +82,11 @@ src/
     headers.ts
     cors.ts
     auth.ts
+    ratelimit.ts
+    inventory.ts
+
+examples/
+  vulnerable-api/   (deliberately misconfigured Express server for testing)
 
 test/
   ...
@@ -124,8 +129,10 @@ Findings are structured security observations with:
 
 - stable IDs
 - severity
-- evidence
+- description and "why it matters" explanation
+- OWASP category tag
 - optional remediation guidance
+- optional evidence
 
 They are designed to be both machine-readable and human-readable.
 

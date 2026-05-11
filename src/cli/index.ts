@@ -1,13 +1,18 @@
 #!/usr/bin/env node
+import { readFileSync } from 'node:fs';
 import { Command } from 'commander';
 import { scanCommand } from './commands/scan.js';
+
+const { version } = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf-8')
+) as { version: string };
 
 const program = new Command();
 
 program
   .name('sentinel')
   .description('Sentinel: CLI API security scanner (passive + active checks)')
-  .version('0.1.0');
+  .version(version);
 
 program
   .command('scan')

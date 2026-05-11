@@ -11,7 +11,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 **Implemented suites:**
 - HTTP security headers (HSTS, X-Content-Type-Options, Referrer-Policy)
 - CORS misconfiguration detection (wildcard + credentials, origin reflection)
-- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics)
+- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics, JWT inspection — alg:none, missing exp, expired tokens, excessive TTL)
 - Rate limiting detection (header inspection, burst probe, Retry-After coverage)
 - API inventory (sensitive endpoint exposure, stale version detection)
 
@@ -33,7 +33,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 | # | Category | Current Coverage | Planned |
 |---|----------|-----------------|---------|
 | API1:2023 | Broken Object Level Authorization | — | Injection/fuzzing probes |
-| API2:2023 | Broken Authentication | **Auth suite**: 401 semantics, auth bypass heuristic, cross-origin redirect risk; **CORS suite**: wildcard + credentials | Broader auth scheme coverage |
+| API2:2023 | Broken Authentication | **Auth suite**: 401 semantics, auth bypass heuristic, cross-origin redirect risk, JWT inspection (alg:none, missing exp, expired issuance, excessive TTL); **CORS suite**: wildcard + credentials | Broader auth scheme coverage |
 | API3:2023 | Broken Object Property Level Authorization | — | Response body analysis |
 | API4:2023 | Unrestricted Resource Consumption | **Rate limit suite**: header inspection, sequential burst probe, missing Retry-After detection | Broader threshold tuning |
 | API5:2023 | Broken Function Level Authorization | Partial — auth suite detects unprotected endpoints (heuristic) | Method-level fuzzing |
