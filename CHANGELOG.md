@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## Unreleased
 
+### Changed
+
+- **Suite registry refactor**: `buildSuites` now accepts `config.suites` directly instead of a parallel named-boolean object. Adding a new suite requires touching one file (`suites/index.ts`) rather than four. `REGISTRY` uses `Record<SuiteName, ...>` so TypeScript errors if a schema suite key has no factory.
+- **Removed phantom `injection` suite config**: `injection` was declared in the config schema but had no factory and silently did nothing. Removed until the suite exists.
+- **`resolveEndpoints` helper** (`core/endpoints.ts`): extracts the shared "use selectedEndpoints or fall back to GET /" logic that was duplicated across the CORS, headers, and rate limit suites.
+- **Removed dead config fallbacks**: all suites were applying `?? 20` / `Math.max(1, ...)` guards to `maxRequestsPerSuite`, and the rate limit suite had similar guards on `burstCount` and `delayMs`. The Zod schema already enforces these bounds; the fallbacks are removed.
+
 ## 0.2.0 - 2026-05-11
 
 ### Added
