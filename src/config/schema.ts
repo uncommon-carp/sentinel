@@ -62,7 +62,6 @@ export const SentinelConfigSchema = z.object({
       inventory: z.boolean().default(true),
       injection: z.boolean().default(false)
     })
-    .partial()
     .default({}),
   scope: ScopeSchema.default({}),
   active: ActiveSchema,
