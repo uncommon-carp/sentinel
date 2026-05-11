@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { loadConfig } from '../../config/load.js';
 import { createLogger } from '../../core/logger.js';
 import { HttpClient } from '../../http/client.js';
@@ -7,6 +8,12 @@ import { markdownReporter } from '../../reporters/markdown.js';
 import { runScan } from '../../core/runner.js';
 import { loadOpenApi } from '../../openapi/load.js';
 import { selectEndpoints } from '../../core/endpoints.js';
+
+const VERSION = (
+  JSON.parse(fs.readFileSync(new URL('../../../package.json', import.meta.url), 'utf-8')) as {
+    version: string;
+  }
+).version;
 
 export type ScanCommandOptions = {
   url: string;
@@ -34,7 +41,7 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     baseUrl: config.target.baseUrl,
     timeoutMs: config.active.timeoutMs,
     defaultHeaders: {
-      'user-agent': 'sentinel/0.1.0',
+      'user-agent': `sentinel/${VERSION}`,
       accept: 'application/json,*/*'
     },
     authHeader: () => {
@@ -80,7 +87,7 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     meta: {
       startedAt: new Date().toISOString(),
       targetBaseUrl: config.target.baseUrl,
-      version: '0.1.0'
+      version: VERSION
     }
   });
 
