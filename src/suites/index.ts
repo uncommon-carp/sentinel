@@ -10,29 +10,31 @@
  * Design notes:
  * - Suites are intentionally stateless and isolated.
  * - This file should contain *no* scan logic — only wiring.
- * - Configuration defaults are resolved here (e.g. undefined → enabled),
- *   keeping individual suites free of config branching.
+ * - REGISTRY uses Record<SuiteName, ...> so TypeScript errors if a suite added
+ *   to the schema config is not wired to a factory here.
+ * - ORDER controls execution sequence independently of REGISTRY keys.
  */
 
 import type { Suite } from '../core/types.js';
+import type { SentinelConfig } from '../config/schema.js';
 import { headersSuite } from './headers.js';
 import { corsSuite } from './cors.js';
 import { authSuite } from './auth.js';
 import { rateLimitSuite } from './ratelimit.js';
 import { inventorySuite } from './inventory.js';
 
-export function buildSuites(enabled: {
-  headers: boolean;
-  cors: boolean;
-  auth: boolean;
-  ratelimit: boolean;
-  inventory: boolean;
-}): Suite[] {
-  const suites: Suite[] = [];
-  if (enabled.headers) suites.push(headersSuite());
-  if (enabled.cors) suites.push(corsSuite());
-  if (enabled.auth) suites.push(authSuite());
-  if (enabled.ratelimit) suites.push(rateLimitSuite());
-  if (enabled.inventory) suites.push(inventorySuite());
-  return suites;
+type SuiteName = keyof SentinelConfig['suites'];
+
+const REGISTRY: Record<SuiteName, () => Suite> = {
+  headers: headersSuite,
+  cors: corsSuite,
+  auth: authSuite,
+  ratelimit: rateLimitSuite,
+  inventory: inventorySuite,
+};
+
+const ORDER: SuiteName[] = ['headers', 'cors', 'auth', 'ratelimit', 'inventory'];
+
+export function buildSuites(enabled: SentinelConfig['suites']): Suite[] {
+  return ORDER.filter((name) => enabled[name]).map((name) => REGISTRY[name]());
 }

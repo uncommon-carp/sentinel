@@ -7,7 +7,7 @@ function makeConfig(): SentinelConfig {
   return {
     target: { baseUrl: 'https://api.example.com' },
     auth: { type: 'none', probePaths: ['/'], compareUnauthed: false },
-    suites: { headers: true, cors: true, auth: true, ratelimit: true, injection: false },
+    suites: { headers: true, cors: true, auth: true, ratelimit: true, inventory: true },
     active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
     output: { dir: './sentinel-out', json: true, markdown: true },
     verbose: false,
