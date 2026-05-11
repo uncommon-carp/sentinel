@@ -5,15 +5,128 @@
  * - 401 semantics: WWW-Authenticate should be present to advertise the auth scheme
  * - Redirect safety: cross-origin redirects on an auth probe can leak credentials
  * - Enforcement heuristic: compares authed vs. unauthed responses on probePath
+ * - JWT inspection: if any response includes a JWT (headers or body), decode and check
+ *   for alg:none, missing exp, already-expired issuance, and overly long TTL (>24h)
  *
  * Heuristic by design — false positives are possible if probePaths are not protected.
  *
  * Configuration:
- * - auth.probePaths     endpoints for probing (default ["/"])
- * - auth.compareUnauthed   gates the authed vs. unauthed comparison
+ * - auth.probePaths       endpoints for probing (default ["/"])
+ * - auth.compareUnauthed  gates the authed vs. unauthed comparison
  */
 
 import type { Suite, Finding, SelectedEndpoint } from '../core/types.js';
+import type { HttpResponse } from '../http/client.js';
+
+const JWT_TTL_LIMIT = 86400;
+const JWT_RE = /[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g;
+
+function extractJwts(res: HttpResponse): string[] {
+  const seen = new Set<string>();
+  const scan = (text: string) => {
+    for (const m of text.matchAll(JWT_RE)) seen.add(m[0]);
+  };
+  for (const v of Object.values(res.headers)) scan(v);
+  scan(res.bodyText);
+  return [...seen];
+}
+
+function decodeJwt(
+  token: string
+): { header: Record<string, unknown>; payload: Record<string, unknown> } | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const header = JSON.parse(Buffer.from(parts[0]!, 'base64url').toString('utf8'));
+    const payload = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString('utf8'));
+    if (typeof header !== 'object' || header === null) return null;
+    if (typeof payload !== 'object' || payload === null) return null;
+    return { header: header as Record<string, unknown>, payload: payload as Record<string, unknown> };
+  } catch {
+    return null;
+  }
+}
+
+function inspectJwts(tokens: string[], res: HttpResponse): Finding[] {
+  const findings: Finding[] = [];
+  const now = Math.floor(Date.now() / 1000);
+
+  for (const token of tokens) {
+    const decoded = decodeJwt(token);
+    if (!decoded) continue;
+
+    const { header, payload } = decoded;
+    const tokenPreview = `${token.slice(0, 40)}...`;
+
+    if (typeof header.alg === 'string' && header.alg.toLowerCase() === 'none') {
+      findings.push({
+        id: 'auth.jwt_alg_none',
+        title: 'JWT with alg:none detected in response',
+        severity: 'critical',
+        description:
+          'A JWT using the "none" algorithm was found in a response. Tokens with alg:none carry no cryptographic signature; servers that accept them can be trivially bypassed.',
+        remediation:
+          'Reject JWTs with alg:none server-side and enforce an explicit algorithm allowlist.',
+        evidence: { url: res.url, status: res.status, tokenPreview },
+        suite: 'auth',
+        tags: ['auth', 'jwt']
+      });
+    }
+
+    if (!('exp' in payload)) {
+      findings.push({
+        id: 'auth.jwt_missing_exp',
+        title: 'JWT with no expiration claim (exp) detected in response',
+        severity: 'medium',
+        description:
+          'A JWT without an exp claim was found in a response. Non-expiring tokens cannot be automatically invalidated and remain valid indefinitely if leaked.',
+        remediation:
+          'Always include an exp claim in issued JWTs and reject tokens that lack one on the server side.',
+        evidence: { url: res.url, status: res.status, tokenPreview },
+        suite: 'auth',
+        tags: ['auth', 'jwt']
+      });
+    }
+
+    const exp = typeof payload.exp === 'number' ? payload.exp : null;
+    const iat = typeof payload.iat === 'number' ? payload.iat : null;
+
+    if (exp !== null && exp < now && res.status >= 200 && res.status < 300) {
+      findings.push({
+        id: 'auth.jwt_expired_accepted',
+        title: 'Server issued an already-expired JWT',
+        severity: 'high',
+        description:
+          'A JWT with an exp claim in the past was present in a successful (2xx) response. The server appears to have issued a token that is already expired.',
+        remediation:
+          'Validate JWT expiry server-side and ensure issued tokens have exp set in the future.',
+        evidence: { url: res.url, status: res.status, exp, now, tokenPreview },
+        suite: 'auth',
+        tags: ['auth', 'jwt']
+      });
+    }
+
+    if (exp !== null) {
+      const ttl = exp - (iat ?? now);
+      if (ttl > JWT_TTL_LIMIT) {
+        findings.push({
+          id: 'auth.jwt_long_ttl',
+          title: 'JWT with unusually long TTL detected in response',
+          severity: 'low',
+          description:
+            `A JWT valid for more than ${JWT_TTL_LIMIT / 3600}h was found in a response. Long-lived access tokens extend the window of opportunity if a token is compromised.`,
+          remediation:
+            'Issue short-lived access tokens (ideally ≤1h) and use refresh tokens for long-lived sessions.',
+          evidence: { url: res.url, status: res.status, ttlSeconds: ttl, tokenPreview },
+          suite: 'auth',
+          tags: ['auth', 'jwt']
+        });
+      }
+    }
+  }
+
+  return findings;
+}
 
 function isRedirect(status: number) {
   return status >= 300 && status < 400;
@@ -45,6 +158,8 @@ export function authSuite(): Suite {
           method: 'GET',
           path: ep.path
         });
+
+        findings.push(...inspectJwts(extractJwts(authedRes), authedRes));
 
         // Redirect handling:
         // We do not follow redirects. If the target redirects across origins,
@@ -110,6 +225,8 @@ export function authSuite(): Suite {
             path: ep.path,
             headers: overrideHeaders
           });
+
+          findings.push(...inspectJwts(extractJwts(unauthedRes), unauthedRes));
 
           // If both authed and unauthed succeed (2xx), that's suspicious *if the path is meant to be protected*.
           const authedOk = authedRes.status >= 200 && authedRes.status < 300;

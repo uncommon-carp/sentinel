@@ -18,7 +18,7 @@ export function corsSuite(): Suite {
       const findings: Finding[] = [];
       const origin = 'https://sentinel.invalid';
 
-      const endpoints = ctx.selectedEndpoints && ctx.selectedEndpoints.length > 0 ? ctx.selectedEndpoints : [{ method: 'get', path: '/' }]
+      const endpoints = ctx.selectedEndpoints && ctx.selectedEndpoints.length > 0 ? ctx.selectedEndpoints : [{ method: 'get', path: '/' }];
 
       const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
       const toProbe = endpoints.slice(0, cap);
