@@ -19,17 +19,20 @@ import { headersSuite } from './headers.js';
 import { corsSuite } from './cors.js';
 import { authSuite } from './auth.js';
 import { rateLimitSuite } from './ratelimit.js';
+import { inventorySuite } from './inventory.js';
 
 export function buildSuites(enabled: {
   headers: boolean;
   cors: boolean;
   auth: boolean;
   ratelimit: boolean;
+  inventory: boolean;
 }): Suite[] {
   const suites: Suite[] = [];
   if (enabled.headers) suites.push(headersSuite());
   if (enabled.cors) suites.push(corsSuite());
   if (enabled.auth) suites.push(authSuite());
   if (enabled.ratelimit) suites.push(rateLimitSuite());
+  if (enabled.inventory) suites.push(inventorySuite());
   return suites;
 }

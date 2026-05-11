@@ -12,7 +12,7 @@ export function makeConfig(
       compareUnauthed: authType !== 'none',
       bearerToken: authType === 'bearer' ? 'test-token' : undefined
     },
-    suites: { headers: true, cors: true, auth: true, ratelimit: true, injection: false },
+    suites: { headers: true, cors: true, auth: true, ratelimit: true, inventory: true, injection: false },
     ratelimit: { burstCount: 10, delayMs: 0 },
     scope: {
       enabled: false,

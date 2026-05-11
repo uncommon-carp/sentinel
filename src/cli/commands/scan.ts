@@ -52,7 +52,8 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     headers: config.suites.headers ?? true,
     cors: config.suites.cors ?? true,
     auth: config.suites.auth ?? true,
-    ratelimit: config.suites.ratelimit ?? true
+    ratelimit: config.suites.ratelimit ?? true,
+    inventory: config.suites.inventory ?? true
   });
 
   const reporters = [

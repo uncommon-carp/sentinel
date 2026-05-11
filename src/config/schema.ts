@@ -59,6 +59,7 @@ export const SentinelConfigSchema = z.object({
       cors: z.boolean().default(true),
       auth: z.boolean().default(true),
       ratelimit: z.boolean().default(true),
+      inventory: z.boolean().default(true),
       injection: z.boolean().default(false)
     })
     .partial()
