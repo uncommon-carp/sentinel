@@ -24,7 +24,12 @@ describe('CLI smoke', () => {
       { status: 401, headers: {} }, // auth probe
       { status: 200, headers: {} }, // ratelimit phase 1
       { status: 200, headers: {} }, // ratelimit burst 1
-      { status: 200, headers: {} } //  ratelimit burst 2
+      { status: 200, headers: {} }, // ratelimit burst 2
+      // inventory GETs: /swagger /openapi.json /api-docs /graphql /debug /actuator /metrics /v1/ /api/v1/ /health
+      { status: 404 }, { status: 404 }, { status: 404 }, { status: 404 }, { status: 404 },
+      { status: 404 }, { status: 404 }, { status: 404 }, { status: 404 }, { status: 404 },
+      // inventory: POST /graphql introspection
+      { status: 404 }
     ]);
 
     const out = tmpDir();
