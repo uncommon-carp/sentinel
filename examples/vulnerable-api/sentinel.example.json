@@ -1,0 +1,16 @@
+{
+  "target": {
+    "baseUrl": "http://localhost:3000",
+    "openapi": "http://localhost:3000/openapi.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearerToken": "demo-token",
+    "probePaths": ["/api/v2/auth"],
+    "compareUnauthed": true
+  },
+  "ratelimit": {
+    "burstCount": 10,
+    "delayMs": 50
+  }
+}
