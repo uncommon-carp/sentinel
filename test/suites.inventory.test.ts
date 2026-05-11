@@ -7,10 +7,13 @@ import { makeConfig } from './helpers/makeConfig.js';
 import type { LoadedApiSpec } from '../src/openapi/types.js';
 
 // Probe order: /swagger, /openapi.json, /api-docs, /graphql, /debug, /actuator, /metrics,
-//              /v1/, /api/v1/, /health
-function makeQueue(overrides: Record<number, { status: number }> = {}) {
-  return Array.from({ length: 10 }, (_, i) => ({
-    status: overrides[i]?.status ?? 404
+//              /v1/, /api/v1/, /health, then POST /graphql (introspection)
+function makeQueue(
+  overrides: Record<number, { status: number; bodyText?: string }> = {}
+) {
+  return Array.from({ length: 11 }, (_, i) => ({
+    status: overrides[i]?.status ?? 404,
+    bodyText: overrides[i]?.bodyText ?? ''
   }));
 }
 
@@ -142,5 +145,37 @@ describe('inventory suite', () => {
     const findings = await inventorySuite().run({ http, config, logger: createLogger({ verbose: false }) });
 
     expect(findings).toHaveLength(0);
+  });
+
+  it('emits graphql introspection finding when schema data is returned', async () => {
+    // index 10 = POST /graphql introspection
+    const introspectionBody = JSON.stringify({ data: { __schema: { queryType: { name: 'Query' } } } });
+    mockFetchQueue(makeQueue({ 10: { status: 200, bodyText: introspectionBody } }));
+
+    const config = makeConfig('https://api.example.com');
+    const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+
+    const findings = await inventorySuite().run({ http, config, logger: createLogger({ verbose: false }) });
+
+    expect(findings).toHaveLength(1);
+    const f = findings[0];
+    expect(f.id).toBe('inventory.graphql_introspection_enabled');
+    expect(f.severity).toBe('low');
+    expect(f.suite).toBe('inventory');
+    expect(f.tags).toContain('graphql');
+    expect(f.tags).toContain('api9');
+  });
+
+  it('does not emit introspection finding when server disables introspection', async () => {
+    // Server returns 200 but with an errors array (introspection disabled)
+    const errorBody = JSON.stringify({ errors: [{ message: 'GraphQL introspection is not allowed' }] });
+    mockFetchQueue(makeQueue({ 10: { status: 200, bodyText: errorBody } }));
+
+    const config = makeConfig('https://api.example.com');
+    const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+
+    const findings = await inventorySuite().run({ http, config, logger: createLogger({ verbose: false }) });
+
+    expect(findings.every((f) => f.id !== 'inventory.graphql_introspection_enabled')).toBe(true);
   });
 });

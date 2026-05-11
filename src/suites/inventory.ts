@@ -3,6 +3,8 @@
  *
  * Checks:
  * - Sensitive endpoint exposure: probes debug/admin/doc paths for unexpected 2xx (API9)
+ * - GraphQL introspection: POSTs a minimal introspection query to /graphql; flags if
+ *   introspection data is returned (API9 / hardening)
  * - Stale API version: if an OpenAPI spec is loaded with a declared base version, checks
  *   whether older version prefixes (/v1/, /api/v1/) are still responding (API9)
  *
@@ -28,6 +30,9 @@ const SENSITIVE_PATHS = [
 const VERSION_PATHS = ['/v1/', '/api/v1/'];
 
 const ALL_PROBE_PATHS = [...SENSITIVE_PATHS, ...VERSION_PATHS, '/health'];
+
+const GRAPHQL_PATH = '/graphql';
+const INTROSPECTION_BODY = JSON.stringify({ query: '{ __schema { queryType { name } } }' });
 
 function extractDeclaredVersion(spec: Record<string, unknown>): string | null {
   const servers = spec.servers as Array<{ url: string }> | undefined;
@@ -84,6 +89,39 @@ export function inventorySuite(): Suite {
           suite: 'inventory',
           tags: ['inventory', 'api9']
         });
+      }
+
+      const gqlRes = await ctx.http.request({
+        method: 'POST',
+        path: GRAPHQL_PATH,
+        headers: { 'content-type': 'application/json' },
+        body: INTROSPECTION_BODY
+      });
+
+      try {
+        const gqlBody = JSON.parse(gqlRes.bodyText) as Record<string, unknown>;
+        const schema = (gqlBody?.data as Record<string, unknown> | undefined)?.__schema;
+        if (gqlRes.status >= 200 && gqlRes.status < 300 && schema != null) {
+          findings.push({
+            id: 'inventory.graphql_introspection_enabled',
+            title: 'GraphQL introspection is enabled',
+            severity: 'low',
+            description:
+              'The GraphQL endpoint responded to an introspection query and returned schema ' +
+              'data. In production, introspection exposes the full API type system to ' +
+              'unauthenticated clients, giving attackers a detailed roadmap of available ' +
+              'queries, mutations, and types.',
+            remediation:
+              'Disable introspection in production. Most GraphQL servers have a dedicated ' +
+              'option for this (e.g. introspection: false in Apollo Server). Expose schema ' +
+              'documentation through controlled channels instead.',
+            evidence: { url: gqlRes.url, status: gqlRes.status },
+            suite: 'inventory',
+            tags: ['inventory', 'graphql', 'api9']
+          });
+        }
+      } catch {
+        // Non-JSON response — not a GraphQL introspection result
       }
 
       if (ctx.api) {
