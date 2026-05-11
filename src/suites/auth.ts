@@ -65,8 +65,11 @@ function inspectJwts(tokens: string[], res: HttpResponse): Finding[] {
         severity: 'critical',
         description:
           'A JWT using the "none" algorithm was found in a response. Tokens with alg:none carry no cryptographic signature; servers that accept them can be trivially bypassed.',
+        whyItMatters:
+          'An attacker can forge arbitrary JWT claims — including elevated roles — and gain unauthorized access to any endpoint that trusts the token, with no cryptographic barrier.',
         remediation:
           'Reject JWTs with alg:none server-side and enforce an explicit algorithm allowlist.',
+        owasp: 'API2: Broken Authentication',
         evidence: { url: res.url, status: res.status, tokenPreview },
         suite: 'auth',
         tags: ['auth', 'jwt']
@@ -80,8 +83,11 @@ function inspectJwts(tokens: string[], res: HttpResponse): Finding[] {
         severity: 'medium',
         description:
           'A JWT without an exp claim was found in a response. Non-expiring tokens cannot be automatically invalidated and remain valid indefinitely if leaked.',
+        whyItMatters:
+          'A stolen token without an expiry is valid forever. There is no time-bounded window to limit blast radius if a token is compromised, logged, or leaked through a third party.',
         remediation:
           'Always include an exp claim in issued JWTs and reject tokens that lack one on the server side.',
+        owasp: 'API2: Broken Authentication',
         evidence: { url: res.url, status: res.status, tokenPreview },
         suite: 'auth',
         tags: ['auth', 'jwt']
@@ -98,8 +104,11 @@ function inspectJwts(tokens: string[], res: HttpResponse): Finding[] {
         severity: 'high',
         description:
           'A JWT with an exp claim in the past was present in a successful (2xx) response. The server appears to have issued a token that is already expired.',
+        whyItMatters:
+          'If the server issues or accepts expired tokens, expiry-based revocation is not enforced. Leaked tokens remain usable past their intended lifetime, removing the primary time-bound safety net.',
         remediation:
           'Validate JWT expiry server-side and ensure issued tokens have exp set in the future.',
+        owasp: 'API2: Broken Authentication',
         evidence: { url: res.url, status: res.status, exp, now, tokenPreview },
         suite: 'auth',
         tags: ['auth', 'jwt']
@@ -115,8 +124,11 @@ function inspectJwts(tokens: string[], res: HttpResponse): Finding[] {
           severity: 'low',
           description:
             `A JWT valid for more than ${JWT_TTL_LIMIT / 3600}h was found in a response. Long-lived access tokens extend the window of opportunity if a token is compromised.`,
+          whyItMatters:
+            'Short-lived tokens limit attacker dwell time after a compromise — if a token leaks, it expires quickly. Long-lived access tokens negate this protection without requiring explicit revocation.',
           remediation:
             'Issue short-lived access tokens (ideally ≤1h) and use refresh tokens for long-lived sessions.',
+          owasp: 'API2: Broken Authentication',
           evidence: { url: res.url, status: res.status, ttlSeconds: ttl, tokenPreview },
           suite: 'auth',
           tags: ['auth', 'jwt']
@@ -178,8 +190,11 @@ export function authSuite(): Suite {
                   severity: 'medium',
                   description:
                     'Auth probe returned a redirect to a different origin. Following redirects with credentials can risk leaking Authorization headers in naive clients.',
+                  whyItMatters:
+                    'Some HTTP clients and SDKs forward Authorization headers on redirects without checking whether the destination is the same origin. A cross-origin redirect can silently exfiltrate credentials to an attacker-controlled domain.',
                   remediation:
                     'Avoid redirecting authenticated endpoints across origins, or ensure clients do not forward credentials across origins.',
+                  owasp: 'API2: Broken Authentication',
                   evidence: {
                     probeUrl: authedRes.url,
                     location: locUrl.toString(),
@@ -204,8 +219,11 @@ export function authSuite(): Suite {
               severity: 'low',
               description:
                 'Endpoint returned 401 Unauthorized but did not include a WWW-Authenticate header. This can break clients and obscures the intended auth scheme.',
+              whyItMatters:
+                'Clients have no standard way to discover the required auth scheme, which breaks spec-compliant HTTP clients and can mask auth bypass conditions during testing.',
               remediation:
                 'Return a WWW-Authenticate header on 401 responses that require authentication (e.g., Bearer realm=...).',
+              owasp: 'API2: Broken Authentication',
               evidence: { probeUrl: authedRes.url, status: authedRes.status },
               suite: 'auth',
               tags: ['auth', 'http']
@@ -239,8 +257,11 @@ export function authSuite(): Suite {
               severity: 'medium',
               description:
                 'The configured auth probe endpoint returned success both with configured credentials and with credentials cleared. This may indicate the endpoint is not protected or auth is not enforced as expected.',
+              whyItMatters:
+                'If an endpoint returns the same success response regardless of credential validity, unauthenticated access may be possible — the core broken authentication scenario.',
               remediation:
                 'Verify that the probe path points to an endpoint that requires authentication, and ensure auth is enforced server-side.',
+              owasp: 'API2: Broken Authentication',
               evidence: {
                 probeUrl: url,
                 authedStatus: authedRes.status,

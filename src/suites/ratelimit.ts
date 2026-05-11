@@ -69,10 +69,13 @@ export function rateLimitSuite(): Suite {
             '(X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, etc.). ' +
             'Rate limiting may still be enforced at the infrastructure level without ' +
             'being communicated to clients via headers.',
+          whyItMatters:
+            'Without visible quota signals, clients cannot self-throttle and automated tools have no indication that limits exist before hitting them — increasing the risk of accidental or deliberate overload.',
           remediation:
             'Return standard rate-limit headers so clients can observe and adapt to quota ' +
             'constraints before being throttled (e.g. X-RateLimit-Limit, X-RateLimit-Remaining, ' +
             'X-RateLimit-Reset).',
+          owasp: 'API4: Unrestricted Resource Consumption',
           evidence: { probed: toProbe.length, paths: toProbe.map((e) => e.path) },
           suite: 'ratelimit',
           tags: ['ratelimit', 'http']
@@ -110,9 +113,12 @@ export function rateLimitSuite(): Suite {
               'Rate limiting was triggered (HTTP 429) but the response did not include a ' +
               'Retry-After header. Without it, clients have no signal for when to safely retry ' +
               'and may resort to aggressive polling.',
+            whyItMatters:
+              'Clients with no retry guidance typically resort to aggressive polling, worsening load on an already-throttled endpoint and turning a protective mechanism into an amplifier.',
             remediation:
               'Include a Retry-After header on 429 responses. The value should be the number ' +
               'of seconds to wait, or an HTTP-date indicating when the client may retry.',
+            owasp: 'API4: Unrestricted Resource Consumption',
             evidence: {
               probeUrl: throttled.url,
               requestsBeforeThrottle: burst.length,
@@ -134,10 +140,13 @@ export function rateLimitSuite(): Suite {
             `A burst of ${burst.length} sequential requests (${delayMs}ms apart) to ` +
             `${probePath} completed without triggering a 429 or returning rate-limit headers. ` +
             'HTTP-layer rate limiting may not be enforced on this endpoint.',
+          whyItMatters:
+            'Unthrottled endpoints are vulnerable to brute-force, credential stuffing, scraping, and denial-of-service via sustained high request volume. Rate limiting is a primary control against all of these.',
           remediation:
             'Implement rate limiting at the API gateway or application layer. Return 429 ' +
             'when limits are exceeded and include standard rate-limit headers ' +
             '(X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset).',
+          owasp: 'API4: Unrestricted Resource Consumption',
           evidence: {
             probeUrl: burst[0]?.url,
             burstCount: burst.length,

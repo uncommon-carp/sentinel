@@ -83,10 +83,13 @@ export function inventorySuite(): Suite {
           description:
             `${exposedSensitive.length} sensitive path(s) returned a success response. ` +
             'Debug, documentation, and admin endpoints should not be accessible in production.',
+          whyItMatters:
+            'Debug, admin, and documentation endpoints reveal internal API structure, routes, and implementation details that attackers use to map attack surface and identify exploitable paths.',
           remediation:
             'Disable or restrict access to debug, admin, and API documentation endpoints in ' +
             'production. If public docs are intentional, verify the spec does not expose ' +
             'sensitive implementation details.',
+          owasp: 'API9: Improper Inventory Management',
           evidence: { paths: exposedSensitive },
           suite: 'inventory',
           tags: ['inventory', 'api9']
@@ -113,10 +116,13 @@ export function inventorySuite(): Suite {
               'data. In production, introspection exposes the full API type system to ' +
               'unauthenticated clients, giving attackers a detailed roadmap of available ' +
               'queries, mutations, and types.',
+            whyItMatters:
+              'Introspection gives attackers a complete, machine-readable map of every query, mutation, type, and field — significantly accelerating reconnaissance and reducing the cost of finding injection points.',
             remediation:
               'Disable introspection in production. Most GraphQL servers have a dedicated ' +
               'option for this (e.g. introspection: false in Apollo Server). Expose schema ' +
               'documentation through controlled channels instead.',
+            owasp: 'API9: Improper Inventory Management',
             evidence: { url: gqlRes.url, status: gqlRes.status },
             suite: 'inventory',
             tags: ['inventory', 'graphql', 'api9']
@@ -145,12 +151,14 @@ export function inventorySuite(): Suite {
               description:
                 `The API spec declares ${declaredVersion} as the current version, but ` +
                 `${stale.length} older version path(s) are still returning success responses. ` +
-                'Stale versions may lack security controls present in the current version ' +
-                '(OWASP API9: Improper Inventory Management).',
+                'Stale versions may lack security controls present in the current version.',
+              whyItMatters:
+                'Old API versions often miss security patches and hardening applied to the current version. They represent untracked attack surface that can bypass newer controls entirely.',
               remediation:
                 'Decommission or block deprecated version endpoints. If parallel versioning is ' +
                 'intentional, ensure older versions receive equivalent security updates and are ' +
                 'tracked in your API inventory.',
+              owasp: 'API9: Improper Inventory Management',
               evidence: {
                 declaredVersion,
                 stale: stale.map((r) => ({ path: r.path, status: r.status, url: r.url }))
