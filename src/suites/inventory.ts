@@ -61,7 +61,7 @@ export function inventorySuite(): Suite {
       'Probes common API paths for sensitive endpoint exposure and stale version endpoints.',
     async run(ctx): Promise<Finding[]> {
       const findings: Finding[] = [];
-      const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
+      const cap = ctx.config.active.maxRequestsPerSuite;
       const toProbe = ALL_PROBE_PATHS.slice(0, cap);
 
       const results: Record<string, ProbedPath> = {};

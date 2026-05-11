@@ -151,7 +151,7 @@ export function authSuite(): Suite {
     async run(ctx): Promise<Finding[]> {
       const findings: Finding[] = [];
 
-      const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
+      const cap = ctx.config.active.maxRequestsPerSuite;
       const toProbe: SelectedEndpoint[] = ctx.config.auth.probePaths
         .slice(0, cap)
         .map((path) => ({ method: 'get', path }));

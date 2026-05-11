@@ -15,6 +15,7 @@
  */
 
 import type { Suite, Finding } from '../core/types.js';
+import { resolveEndpoints } from '../core/endpoints.js';
 
 const RATE_LIMIT_HEADERS = new Set([
   'x-ratelimit-limit',
@@ -40,15 +41,10 @@ export function rateLimitSuite(): Suite {
       'Checks for HTTP rate limiting via header inspection and a sequential burst probe.',
     async run(ctx): Promise<Finding[]> {
       const findings: Finding[] = [];
-      const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
+      const cap = ctx.config.active.maxRequestsPerSuite;
 
       // Phase 1: scan endpoints for rate-limit headers.
-      const endpoints =
-        ctx.selectedEndpoints && ctx.selectedEndpoints.length > 0
-          ? ctx.selectedEndpoints
-          : [{ method: 'get', path: '/' }];
-
-      const toProbe = endpoints.slice(0, cap);
+      const toProbe = resolveEndpoints(ctx.selectedEndpoints).slice(0, cap);
       let anyHeadersFound = false;
 
       for (const ep of toProbe) {
@@ -86,8 +82,8 @@ export function rateLimitSuite(): Suite {
       // Requests are sent sequentially with a short inter-request delay to remain
       // predictable and safe while still being fast enough to trigger most rate limiters.
       const probePath = toProbe[0]?.path ?? '/';
-      const burstCount = Math.min(Math.max(2, ctx.config.ratelimit.burstCount ?? 10), cap);
-      const delayMs = ctx.config.ratelimit.delayMs ?? 75;
+      const burstCount = Math.min(ctx.config.ratelimit.burstCount, cap);
+      const delayMs = ctx.config.ratelimit.delayMs;
 
       type BurstResponse = { status: number; headers: Record<string, string>; url: string };
       const burst: BurstResponse[] = [];

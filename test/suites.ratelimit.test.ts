@@ -47,17 +47,16 @@ describe('ratelimit suite — Phase 1: header scan', () => {
   });
 
   it('probes multiple selected endpoints before concluding no headers', async () => {
-    const ctx = makeCtx();
-    ctx.config.ratelimit.burstCount = 2;
-    // Two selected endpoints, neither has headers.
-    (ctx as any).selectedEndpoints = [
-      { method: 'get', path: '/users' },
-      { method: 'get', path: '/posts' }
-    ];
     // Phase 1: 2 probes (no headers). Phase 2: 2 burst.
     mockFetchQueue([ok(), ok(), ok(), ok()]);
 
-    const findings = await rateLimitSuite().run(ctx);
+    const findings = await rateLimitSuite().run({
+      ...makeCtx({ burstCount: 2 }),
+      selectedEndpoints: [
+        { method: 'get', path: '/users' },
+        { method: 'get', path: '/posts' }
+      ]
+    });
 
     const finding = findings.find((f) => f.id === 'ratelimit.no_headers');
     expect(finding).toBeDefined();

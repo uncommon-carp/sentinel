@@ -10,6 +10,7 @@
  */
 
 import type { Suite, Finding, Severity } from '../core/types.js';
+import { resolveEndpoints } from '../core/endpoints.js';
 
 type HeaderRule = {
   id: `headers.${string}`;
@@ -71,13 +72,8 @@ export function headersSuite(): Suite {
     async run(ctx): Promise<Finding[]> {
       const findings: Finding[] = [];
 
-      const endpoints =
-        ctx.selectedEndpoints && ctx.selectedEndpoints.length > 0
-          ? ctx.selectedEndpoints
-          : [{ method: 'get', path: '/' }];
-
-      const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
-      const toProbe = endpoints.slice(0, cap);
+      const cap = ctx.config.active.maxRequestsPerSuite;
+      const toProbe = resolveEndpoints(ctx.selectedEndpoints).slice(0, cap);
 
       const missingMap = new Map<string, Affected[]>();
 

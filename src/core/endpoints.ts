@@ -14,6 +14,10 @@ import type { SentinelConfig } from '../config/schema.js';
 import type { ApiEndpoint, LoadedApiSpec } from '../openapi/types.js';
 import type { SelectedEndpoint } from './types.js';
 
+export function resolveEndpoints(endpoints: SelectedEndpoint[] | undefined): SelectedEndpoint[] {
+  return endpoints?.length ? endpoints : [{ method: 'get', path: '/' }];
+}
+
 function compileRegexes(patterns: string[]): RegExp[] {
   return patterns.filter((p) => p.trim().length > 0).map((p) => new RegExp(p));
 }
