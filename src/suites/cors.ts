@@ -40,7 +40,10 @@ export function corsSuite(): Suite {
             severity: 'high',
             description:
               "Access-Control-Allow-Origin is '*' while Access-Control-Allow-Credentials is 'true'.",
+            whyItMatters:
+              'Any website can make credentialed cross-origin requests to this API on behalf of a logged-in user. This enables cross-site attacks that bypass same-origin protections at the browser level.',
             remediation: 'Do not use wildcard ACAO with credentials. Reflect only trusted origins.',
+            owasp: 'API8: Security Misconfiguration',
             evidence: { url: res.url, acao, acc },
             suite: 'cors',
             tags: ['cors']
@@ -53,7 +56,10 @@ export function corsSuite(): Suite {
             title: 'CORS reflects arbitrary Origin',
             severity: 'medium',
             description: 'Server reflected the Origin header value in Access-Control-Allow-Origin.',
+            whyItMatters:
+              'Reflecting arbitrary origins grants any domain CORS access. Combined with user credentials, this allows malicious sites to make authenticated API calls on behalf of a victim without their knowledge.',
             remediation: 'Validate Origin against an allowlist; avoid reflecting arbitrary origins.',
+            owasp: 'API8: Security Misconfiguration',
             evidence: { url: res.url, origin, acao },
             suite: 'cors',
             tags: ['cors']

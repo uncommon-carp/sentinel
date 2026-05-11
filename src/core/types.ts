@@ -17,7 +17,9 @@ export type Finding = {
   title: string;
   severity: Severity;
   description: string;
+  whyItMatters?: string;
   remediation?: string;
+  owasp?: string;
   evidence?: Record<string, unknown>;
   tags?: string[];
   suite: string;

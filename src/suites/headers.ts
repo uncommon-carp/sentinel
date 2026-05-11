@@ -24,7 +24,9 @@ type HeaderRule = {
   severity: Severity;
   title: string;
   description: string;
+  whyItMatters: string;
   remediation: string;
+  owasp: string;
 };
 
 const REQUIRED_HEADERS: Array<HeaderRule> = [
@@ -35,8 +37,11 @@ const REQUIRED_HEADERS: Array<HeaderRule> = [
     title: 'Missing Strict-Transport-Security (HSTS)',
     description:
       'HSTS helps enforce HTTPS by telling browsers to only connect over TLS for a period of time.',
+    whyItMatters:
+      'Without HSTS, browsers may connect over plain HTTP on subsequent visits, enabling downgrade attacks that allow credential and session token interception on the local network.',
     remediation:
-      'Add a Strict-Transport-Security header on HTTPS responses (e.g. max-age=31536000; includeSubDomains).'
+      'Add a Strict-Transport-Security header on HTTPS responses (e.g. max-age=31536000; includeSubDomains).',
+    owasp: 'API8: Security Misconfiguration'
   },
   {
     id: 'headers.missing_xcto',
@@ -44,7 +49,10 @@ const REQUIRED_HEADERS: Array<HeaderRule> = [
     severity: 'low',
     title: 'Missing X-Content-Type-Options',
     description: 'X-Content-Type-Options: nosniff helps prevent MIME type sniffing in browsers.',
-    remediation: 'Add X-Content-Type-Options: nosniff.'
+    whyItMatters:
+      'MIME sniffing can cause browsers to interpret non-HTML API responses as executable content, opening the door to content injection attacks in certain browser and integration contexts.',
+    remediation: 'Add X-Content-Type-Options: nosniff.',
+    owasp: 'API8: Security Misconfiguration'
   },
   {
     id: 'headers.missing_referrer_policy',
@@ -53,8 +61,11 @@ const REQUIRED_HEADERS: Array<HeaderRule> = [
     title: 'Missing Referrer-Policy',
     description:
       'Referrer-Policy controls how much referrer information is sent with requests to other origins.',
+    whyItMatters:
+      'Without a Referrer-Policy, sensitive data in URL paths — such as tokens, IDs, or search terms — can be silently leaked to third-party domains via the Referer header.',
     remediation:
-      'Add a Referrer-Policy header (e.g. no-referrer or strict-origin-when-cross-origin).'
+      'Add a Referrer-Policy header (e.g. no-referrer or strict-origin-when-cross-origin).',
+    owasp: 'API8: Security Misconfiguration'
   }
 ];
 
@@ -99,7 +110,9 @@ export function headersSuite(): Suite {
           title: rule.title,
           severity: rule.severity,
           description: rule.description,
+          whyItMatters: rule.whyItMatters,
           remediation: rule.remediation,
+          owasp: rule.owasp,
           suite: 'headers',
           tags: ['headers', 'http'],
           evidence: {
