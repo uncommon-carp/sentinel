@@ -37,20 +37,21 @@ const INTROSPECTION_BODY = JSON.stringify({ query: '{ __schema { queryType { nam
 function extractDeclaredVersion(spec: Record<string, unknown>): string | null {
   const servers = spec.servers as Array<{ url: string }> | undefined;
   if (Array.isArray(servers) && servers.length > 0) {
-    const match = servers[0].url.match(/\/(v\d+)/i);
-    return match ? match[1] : null;
+    const first = servers[0];
+    if (first) {
+      return first.url.match(/\/(v\d+)/i)?.[1] ?? null;
+    }
   }
   const basePath = spec.basePath as string | undefined;
   if (typeof basePath === 'string') {
-    const match = basePath.match(/\/(v\d+)/i);
-    return match ? match[1] : null;
+    return basePath.match(/\/(v\d+)/i)?.[1] ?? null;
   }
   return null;
 }
 
 function versionNumber(v: string): number {
   const m = v.match(/(\d+)/);
-  return m ? parseInt(m[1], 10) : 0;
+  return m ? parseInt(m[1] ?? '0', 10) : 0;
 }
 
 export function inventorySuite(): Suite {
@@ -69,9 +70,10 @@ export function inventorySuite(): Suite {
         results[probePath] = { path: probePath, status: res.status, url: res.url };
       }
 
-      const exposedSensitive: ProbedPath[] = SENSITIVE_PATHS.filter(
-        (p) => p in results && results[p].status >= 200 && results[p].status < 300
-      ).map((p) => results[p]);
+      const exposedSensitive: ProbedPath[] = SENSITIVE_PATHS.flatMap((p) => {
+        const r = results[p];
+        return r && r.status >= 200 && r.status < 300 ? [r] : [];
+      });
 
       if (exposedSensitive.length > 0) {
         findings.push({
@@ -128,13 +130,12 @@ export function inventorySuite(): Suite {
         const declaredVersion = extractDeclaredVersion(ctx.api.spec);
         if (declaredVersion) {
           const declaredNum = versionNumber(declaredVersion);
-          const stale = VERSION_PATHS.filter((p) => p in results)
-            .map((p) => results[p])
-            .filter((r) => {
-              if (r.status < 200 || r.status >= 300) return false;
-              const m = r.path.match(/v(\d+)/i);
-              return m ? parseInt(m[1], 10) < declaredNum : false;
-            });
+          const stale = VERSION_PATHS.flatMap((p) => {
+            const r = results[p];
+            if (!r || r.status < 200 || r.status >= 300) return [];
+            const m = r.path.match(/v(\d+)/i);
+            return m && parseInt(m[1] ?? '0', 10) < declaredNum ? [r] : [];
+          });
 
           if (stale.length > 0) {
             findings.push({
