@@ -9,6 +9,7 @@
  */
 
 import type { Suite, Finding } from '../core/types.js';
+import { resolveEndpoints } from '../core/endpoints.js';
 
 export function corsSuite(): Suite {
   return {
@@ -18,10 +19,8 @@ export function corsSuite(): Suite {
       const findings: Finding[] = [];
       const origin = 'https://sentinel.invalid';
 
-      const endpoints = ctx.selectedEndpoints && ctx.selectedEndpoints.length > 0 ? ctx.selectedEndpoints : [{ method: 'get', path: '/' }];
-
-      const cap = Math.max(1, ctx.config.active.maxRequestsPerSuite ?? 20);
-      const toProbe = endpoints.slice(0, cap);
+      const cap = ctx.config.active.maxRequestsPerSuite;
+      const toProbe = resolveEndpoints(ctx.selectedEndpoints).slice(0, cap);
 
       for (const ep of toProbe) {
         const res = await ctx.http.request({
