@@ -12,9 +12,10 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 - HTTP security headers (HSTS, X-Content-Type-Options, Referrer-Policy)
 - CORS misconfiguration detection (wildcard + credentials, origin reflection)
 - Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics)
+- Rate limiting detection (header inspection, burst probe, Retry-After coverage)
+- API inventory (sensitive endpoint exposure, stale version detection)
 
 **Planned suites:**
-- Rate limiting detection
 - Injection probes
 
 **Infrastructure:**
@@ -34,12 +35,12 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 | API1:2023 | Broken Object Level Authorization | — | Injection/fuzzing probes |
 | API2:2023 | Broken Authentication | **Auth suite**: 401 semantics, auth bypass heuristic, cross-origin redirect risk; **CORS suite**: wildcard + credentials | Broader auth scheme coverage |
 | API3:2023 | Broken Object Property Level Authorization | — | Response body analysis |
-| API4:2023 | Unrestricted Resource Consumption | — | Rate limiting suite |
+| API4:2023 | Unrestricted Resource Consumption | **Rate limit suite**: header inspection, sequential burst probe, missing Retry-After detection | Broader threshold tuning |
 | API5:2023 | Broken Function Level Authorization | Partial — auth suite detects unprotected endpoints (heuristic) | Method-level fuzzing |
 | API6:2023 | Unrestricted Access to Sensitive Business Flows | — | Out of scope (requires business context) |
 | API7:2023 | Server Side Request Forgery | — | Injection probes |
 | API8:2023 | Security Misconfiguration | **Headers suite**: HSTS, X-Content-Type-Options, Referrer-Policy; **CORS suite**: misconfiguration detection | Additional header/TLS checks |
-| API9:2023 | Improper Inventory Management | Partial — OpenAPI-driven scanning surfaces the intended API surface | Spec drift detection |
+| API9:2023 | Improper Inventory Management | **Inventory suite**: sensitive endpoint exposure (/debug, /actuator, /swagger, etc.), stale version detection cross-referenced against OpenAPI spec | Additional path coverage |
 | API10:2023 | Unsafe Consumption of APIs | — | Out of scope (outbound traffic analysis) |
 
 ---
@@ -123,7 +124,7 @@ Example:
   "auth": {
     "type": "bearer",
     "bearerToken": "${API_TOKEN}",
-    "probePath": "/me",
+    "probePaths": ["/me"],
     "compareUnauthed": true
   },
   "suites": {
@@ -165,7 +166,7 @@ Example:
 | `bearerToken`    | Token value for `bearer` auth                                                  |
 | `apiKeyHeader`   | Header name for `apiKey` auth (e.g. `x-api-key`)                              |
 | `apiKeyValue`    | Header value for `apiKey` auth                                                 |
-| `probePath`      | Endpoint used by the auth suite for probing (default: `/`)                     |
+| `probePaths`     | Endpoints used by the auth suite for probing (default: `["/"]`)                |
 | `compareUnauthed`| Compare authed vs. unauthed responses to detect missing enforcement (default: `true`) |
 
 > **Note:** `basic` auth (`basicUser` / `basicPass`) is accepted by the config schema but header injection is not yet implemented.
@@ -187,7 +188,7 @@ When scope is disabled or no OpenAPI spec is provided, suites fall back to probi
 
 ### Suites
 
-The `suites` block enables or disables individual test suites. Only `headers`, `cors`, and `auth` have active implementations. The `ratelimit` and `injection` keys are accepted by the config parser but are no-ops pending suite implementation.
+The `suites` block enables or disables individual test suites. All five implemented suites (`headers`, `cors`, `auth`, `ratelimit`, `inventory`) are enabled by default. The `injection` key is accepted by the config parser but is a no-op pending suite implementation.
 
 ---
 
@@ -201,7 +202,9 @@ CLI
          ├─ security suites
          │    ├─ headers
          │    ├─ cors
-         │    └─ auth
+         │    ├─ auth
+         │    ├─ ratelimit
+         │    └─ inventory
          └─ reporters
               ├─ JSON
               └─ Markdown
