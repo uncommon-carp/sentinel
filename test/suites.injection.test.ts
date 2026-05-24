@@ -54,7 +54,7 @@ describe('injection suite', () => {
     expect(logged.some((m) => m.includes('no OpenAPI spec'))).toBe(true);
   });
 
-  it('emits injection.error_disclosure on SQL error string in response', async () => {
+  it('emits injection.sql_error_disclosure on SQL error string in response', async () => {
     mockFetchQueue([{ status: 500, bodyText: "ERROR: sql syntax near ''" }]);
 
     const api = makeSpecWithQueryParam('/search', 'q');
@@ -63,7 +63,7 @@ describe('injection suite', () => {
 
     const findings = await injectionSuite().run(ctx);
 
-    const f = findings.find((x) => x.id === 'injection.error_disclosure');
+    const f = findings.find((x) => x.id === 'injection.sql_error_disclosure');
     expect(f).toBeDefined();
     expect(f?.severity).toBe('high');
     expect(f?.suite).toBe('injection');
@@ -151,7 +151,7 @@ describe('injection suite', () => {
 
     const findings = await injectionSuite().run(ctx);
 
-    const f = findings.find((x) => x.id === 'injection.error_disclosure');
+    const f = findings.find((x) => x.id === 'injection.sql_error_disclosure');
     expect(f).toBeDefined();
     expect(f?.evidence?.parameter).toBe('name');
     expect(f?.evidence?.paramType).toBe('body');
