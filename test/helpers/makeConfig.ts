@@ -1,4 +1,7 @@
 import { SentinelConfig } from '../../src/config/schema';
+import { HttpClient } from '../../src/http/client';
+import { createLogger } from '../../src/core/logger';
+import type { SuiteContext } from '../../src/core/types';
 
 export function makeConfig(
   baseUrl: string,
@@ -27,4 +30,13 @@ export function makeConfig(
     output: { dir: './sentinel-out', json: true, markdown: true },
     verbose: false
   };
+}
+
+export function makeSuiteCtx(
+  baseUrl: string = 'https://api.example.com',
+  authType: 'none' | 'basic' | 'bearer' | 'apiKey' = 'none'
+): SuiteContext {
+  const config = makeConfig(baseUrl, authType);
+  const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+  return { http, config, logger: createLogger({ verbose: false }) };
 }

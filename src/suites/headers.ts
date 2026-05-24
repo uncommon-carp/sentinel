@@ -9,7 +9,7 @@
  * each header produces one finding regardless of how many paths are probed.
  */
 
-import type { Suite, Finding, Severity } from '../core/types.js';
+import type { Suite, Finding, Severity, AffectedEndpointEndpoint } from '../core/types.js';
 import { resolveEndpoints } from '../core/endpoints.js';
 
 type HeaderRule = {
@@ -63,8 +63,6 @@ const REQUIRED_HEADERS: Array<HeaderRule> = [
   }
 ];
 
-type Affected = { method: string; path: string; url: string; status: number };
-
 export function headersSuite(): Suite {
   return {
     name: 'headers',
@@ -75,7 +73,7 @@ export function headersSuite(): Suite {
       const cap = ctx.config.active.maxRequestsPerSuite;
       const toProbe = resolveEndpoints(ctx.selectedEndpoints).slice(0, cap);
 
-      const missingMap = new Map<string, Affected[]>();
+      const missingMap = new Map<string, AffectedEndpoint[]>();
 
       for (const ep of toProbe) {
         const res = await ctx.http.request({ method: 'GET', path: ep.path });

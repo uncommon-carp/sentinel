@@ -3,12 +3,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { runScan } from '../src/core/runner.js';
-import { createLogger } from '../src/core/logger.js';
-import { HttpClient } from '../src/http/client.js';
 import type { Suite } from '../src/core/types.js';
 import { jsonReporter } from '../src/reporters/json.js';
 import { markdownReporter } from '../src/reporters/markdown.js';
-import { makeConfig } from './helpers/makeConfig.js';
+import { makeSuiteCtx } from './helpers/makeConfig.js';
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-test-'));
@@ -17,9 +15,8 @@ function tmpDir() {
 describe('runner', () => {
   it('writes json + markdown report files', async () => {
     const out = tmpDir();
-    const config = makeConfig('https://api.example.com');
+    const ctx = makeSuiteCtx();
 
-    // Use a suite that returns deterministic findings (no fetch)
     const suite: Suite = {
       name: 'test-suite',
       description: 'Deterministic suite for runner test',
@@ -36,20 +33,15 @@ describe('runner', () => {
       }
     };
 
-    const http = new HttpClient({
-      baseUrl: config.target.baseUrl,
-      timeoutMs: config.active.timeoutMs
-    });
-
     const result = await runScan({
       suites: [suite],
       reporters: [jsonReporter(), markdownReporter()],
-      ctx: { http, config, logger: createLogger({ verbose: false }) },
-      sanitizedConfig: { target: { baseUrl: config.target.baseUrl } },
+      ctx,
+      sanitizedConfig: { target: { baseUrl: ctx.config.target.baseUrl } },
       outputDir: out,
       meta: {
         startedAt: new Date().toISOString(),
-        targetBaseUrl: config.target.baseUrl,
+        targetBaseUrl: ctx.config.target.baseUrl,
         version: '0.1.0'
       }
     });

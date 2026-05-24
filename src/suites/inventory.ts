@@ -29,7 +29,7 @@ const SENSITIVE_PATHS = [
 
 const VERSION_PATHS = ['/v1/', '/api/v1/'];
 
-const ALL_PROBE_PATHS = [...SENSITIVE_PATHS, ...VERSION_PATHS, '/health'];
+const ALL_PROBE_PATHS = [...SENSITIVE_PATHS, ...VERSION_PATHS];
 
 const GRAPHQL_PATH = '/graphql';
 const INTROSPECTION_BODY = JSON.stringify({ query: '{ __schema { queryType { name } } }' });
