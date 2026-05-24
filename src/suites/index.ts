@@ -22,6 +22,7 @@ import { corsSuite } from './cors.js';
 import { authSuite } from './auth.js';
 import { rateLimitSuite } from './ratelimit.js';
 import { inventorySuite } from './inventory.js';
+import { injectionSuite } from './injection.js';
 
 type SuiteName = keyof SentinelConfig['suites'];
 
@@ -31,9 +32,10 @@ const REGISTRY: Record<SuiteName, () => Suite> = {
   auth: authSuite,
   ratelimit: rateLimitSuite,
   inventory: inventorySuite,
+  injection: injectionSuite,
 };
 
-const ORDER: SuiteName[] = ['headers', 'cors', 'auth', 'ratelimit', 'inventory'];
+const ORDER: SuiteName[] = ['headers', 'cors', 'auth', 'ratelimit', 'inventory', 'injection'];
 
 export function buildSuites(enabled: SentinelConfig['suites']): Suite[] {
   return ORDER.filter((name) => enabled[name]).map((name) => REGISTRY[name]());

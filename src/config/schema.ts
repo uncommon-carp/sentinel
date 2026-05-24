@@ -29,6 +29,15 @@ const RateLimitSchema = z
   })
   .default({});
 
+const InjectionConfigSchema = z
+  .object({
+    paramTypes: z.array(z.enum(['query', 'body'])).default(['query', 'body']),
+    categories: z
+      .array(z.enum(['sql', 'nosql', 'template', 'command']))
+      .default(['sql', 'template'])
+  })
+  .default({});
+
 const ScopeSchema = z
   .object({
     enabled: z.boolean().default(false),
@@ -59,9 +68,11 @@ export const SentinelConfigSchema = z.object({
       cors: z.boolean().default(true),
       auth: z.boolean().default(true),
       ratelimit: z.boolean().default(true),
-      inventory: z.boolean().default(true)
+      inventory: z.boolean().default(true),
+      injection: z.boolean().default(false)
     })
     .default({}),
+  injection: InjectionConfigSchema,
   scope: ScopeSchema.default({}),
   active: ActiveSchema,
   output: z
