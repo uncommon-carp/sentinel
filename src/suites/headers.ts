@@ -9,7 +9,7 @@
  * each header produces one finding regardless of how many paths are probed.
  */
 
-import type { Suite, Finding, Severity, AffectedEndpointEndpoint } from '../core/types.js';
+import type { Suite, Finding, Severity, AffectedEndpoint } from '../core/types.js';
 import { resolveEndpoints } from '../core/endpoints.js';
 
 type HeaderRule = {
