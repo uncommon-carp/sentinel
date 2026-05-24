@@ -1,20 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { rateLimitSuite } from '../src/suites/ratelimit.js';
-import { HttpClient } from '../src/http/client.js';
-import { createLogger } from '../src/core/logger.js';
 import { mockFetchQueue } from './helpers/fetchMock.js';
-import { makeConfig } from './helpers/makeConfig.js';
+import { makeSuiteCtx } from './helpers/makeConfig.js';
 
 function makeCtx(overrides?: { burstCount?: number }) {
-  const config = makeConfig('https://api.example.com');
-  config.ratelimit.burstCount = overrides?.burstCount ?? 3;
-
-  const http = new HttpClient({
-    baseUrl: config.target.baseUrl,
-    timeoutMs: config.active.timeoutMs
-  });
-
-  return { http, config, logger: createLogger({ verbose: false }) };
+  const ctx = makeSuiteCtx();
+  ctx.config.ratelimit.burstCount = overrides?.burstCount ?? 3;
+  return ctx;
 }
 
 // Helpers for readable mock queues.

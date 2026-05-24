@@ -17,11 +17,11 @@ function readJsonIfExists(p: string): unknown | undefined {
 }
 
 function sanitizeConfigForReport(cfg: SentinelConfig): Record<string, unknown> {
-  const clone: any = structuredClone(cfg);
-  if (clone?.auth?.bearerToken) clone.auth.bearerToken = '***';
-  if (clone?.auth?.basicPass) clone.auth.basicPass = '***';
-  if (clone?.auth?.apiKeyValue) clone.auth.apiKeyValue = '***';
-  return clone;
+  const clone = structuredClone(cfg);
+  if (clone.auth.bearerToken) clone.auth.bearerToken = '***';
+  if (clone.auth.basicPass) clone.auth.basicPass = '***';
+  if (clone.auth.apiKeyValue) clone.auth.apiKeyValue = '***';
+  return clone as Record<string, unknown>;
 }
 
 export async function loadConfig(args: LoadConfigArgs): Promise<{

@@ -24,6 +24,7 @@ program
   .option('-v, --verbose', 'Verbose logging', false)
   .action(async (opts) => {
     const { exitCode } = await scanCommand({
+      version,
       url: opts.url,
       config: opts.config,
       openapi: opts.openapi,
