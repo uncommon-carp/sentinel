@@ -20,6 +20,7 @@
  */
 
 import type { Suite, Finding } from '../core/types.js';
+import { resolveEndpoints } from '../core/endpoints.js';
 
 type Category = 'sql' | 'nosql' | 'template' | 'command';
 
@@ -83,7 +84,7 @@ export function injectionSuite(): Suite {
       const categories = config.injection.categories as Category[];
       const paramTypes = config.injection.paramTypes;
 
-      for (const ep of ctx.selectedEndpoints ?? []) {
+      for (const ep of resolveEndpoints(ctx.selectedEndpoints)) {
         const params: Array<{ name: string; type: 'query' | 'body' }> = [];
 
         if (paramTypes.includes('query')) {
