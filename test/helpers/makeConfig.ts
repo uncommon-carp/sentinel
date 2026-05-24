@@ -15,7 +15,8 @@ export function makeConfig(
       compareUnauthed: authType !== 'none',
       bearerToken: authType === 'bearer' ? 'test-token' : undefined
     },
-    suites: { headers: true, cors: true, auth: true, ratelimit: true, inventory: true },
+    suites: { headers: true, cors: true, auth: true, ratelimit: true, inventory: true, injection: false },
+    injection: { paramTypes: ['query', 'body'], categories: ['sql', 'template'] },
     ratelimit: { burstCount: 10, delayMs: 0 },
     scope: {
       enabled: false,

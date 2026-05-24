@@ -20,6 +20,8 @@ const JWT_ALG               = process.env.JWT_ALG                        ?? 'non
 const JWT_TTL_SECONDS       = parseInt(process.env.JWT_TTL_SECONDS       ?? '99999', 10); // default: ~27h
 const JWT_MISSING_EXP       = process.env.JWT_MISSING_EXP               === 'true';  // default: exp included
 const AUTH_REQUIRED         = process.env.AUTH_REQUIRED                  === 'true';  // default: no enforcement
+const VULNERABLE_SQL        = process.env.VULNERABLE_SQL                 !== 'false'; // default: on
+const VULNERABLE_TEMPLATE   = process.env.VULNERABLE_TEMPLATE            !== 'false'; // default: on
 
 // ── Security headers ───────────────────────────────────────────────────────────
 // Disabled by default — triggers headers.missing_hsts, missing_xcto, missing_referrer_policy.
@@ -105,6 +107,35 @@ app.get('/api/v2/auth', (_req, res) => {
   res.json({ token: makeJwt(), user: 'demo' });
 });
 
+// ── Injection: SQL error reflection ───────────────────────────────────────────
+// Triggers injection.error_disclosure when a SQL-like payload is sent to ?q=.
+// Set VULNERABLE_SQL=false to disable.
+
+if (VULNERABLE_SQL) {
+  app.get('/api/v2/search', (req, res) => {
+    const q = String(req.query.q ?? '');
+    if (q.includes("'") || q.includes('"')) {
+      return res.status(500).json({ error: `sql syntax error near '${q}'` });
+    }
+    res.json({ results: [] });
+  });
+}
+
+// ── Injection: Template expression evaluation ──────────────────────────────────
+// Triggers injection.possible_template_injection when {{expr}} is sent to ?name=.
+// Evaluates {{N*M}} style expressions — intentionally vulnerable.
+// Set VULNERABLE_TEMPLATE=false to disable.
+
+if (VULNERABLE_TEMPLATE) {
+  app.get('/api/v2/greet', (req, res) => {
+    const name = String(req.query.name ?? 'world');
+    const rendered = name.replace(/\{\{([^}]+)\}\}/g, (_, expr) => {
+      try { return String(eval(expr)); } catch { return expr; } // eslint-disable-line no-eval
+    });
+    res.json({ message: `Hello, ${rendered}!` });
+  });
+}
+
 // ── Legacy endpoint ────────────────────────────────────────────────────────────
 // Triggers inventory.stale_version_responding when the OpenAPI spec declares v2
 // and this endpoint (version < 2) still responds 200.
@@ -147,7 +178,9 @@ if (EXPOSE_SWAGGER) {
       paths: {
         '/health': { get: { summary: 'Health check',   responses: { '200': { description: 'OK' } } } },
         '/users':  { get: { summary: 'List users',     responses: { '200': { description: 'OK' } } } },
-        '/auth':   { get: { summary: 'Get auth token', responses: { '200': { description: 'Returns a JWT' } } } }
+        '/auth':   { get: { summary: 'Get auth token', responses: { '200': { description: 'Returns a JWT' } } } },
+        '/search': { get: { summary: 'Search',         parameters: [{ name: 'q',    in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } } },
+        '/greet':  { get: { summary: 'Greet user',     parameters: [{ name: 'name', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } } }
       }
     });
   });
@@ -193,6 +226,8 @@ app.listen(PORT, () => {
   console.log(`  ${mark(JWT_TTL_SECONDS > 86400)} JWT long TTL (${Math.round(JWT_TTL_SECONDS / 3600)}h)            JWT_TTL_SECONDS=3600             to shorten`);
   console.log(`  ${mark(JWT_MISSING_EXP)} JWT missing exp claim          JWT_MISSING_EXP=true             to trigger`);
   console.log(`  ${mark(!AUTH_REQUIRED)} Auth enforcement disabled      AUTH_REQUIRED=true               to enforce`);
+  console.log(`  ${mark(VULNERABLE_SQL)} SQL error reflection           VULNERABLE_SQL=false             to disable`);
+  console.log(`  ${mark(VULNERABLE_TEMPLATE)} Template expression eval       VULNERABLE_TEMPLATE=false        to disable`);
   console.log('');
   console.log(`Run against this target:`);
   console.log(`  npx sentinel scan --url http://localhost:${PORT} --config sentinel.example.json\n`);

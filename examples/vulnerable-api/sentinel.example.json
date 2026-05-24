@@ -12,5 +12,14 @@
   "ratelimit": {
     "burstCount": 10,
     "delayMs": 50
+  },
+  "suites": {
+    "injection": true
+  },
+  "injection": {
+    "categories": ["sql", "template"]
+  },
+  "scope": {
+    "enabled": true
   }
 }
