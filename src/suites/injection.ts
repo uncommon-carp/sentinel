@@ -28,7 +28,7 @@ const PAYLOADS: Record<Category, string[]> = {
   sql: ["' OR '1'='1", "' OR 1=1--"],
   nosql: ['{"$gt": ""}', '{"$where": "1"}'],
   template: ['{{7*7}}', '${7*7}', '<%= 7*7 %>'],
-  command: ['; echo sentinel9', '`echo sentinel9`'],
+  command: ['; echo sentinel9', '`echo sentinel9`']
 };
 
 const SQL_ERROR_PATTERNS = ['sql syntax', 'ora-', 'pg_query', 'mysql_fetch', 'sqlite', 'sqlstate'];
@@ -121,7 +121,7 @@ export function injectionSuite(): Suite {
                   method: 'POST',
                   path: ep.path,
                   headers: { 'content-type': 'application/json' },
-                  body: JSON.stringify({ [param.name]: payload }),
+                  body: JSON.stringify({ [param.name]: payload })
                 });
               }
               reqCount++;
@@ -132,7 +132,7 @@ export function injectionSuite(): Suite {
                 endpoint: `${ep.method.toUpperCase()} ${ep.path}`,
                 parameter: param.name,
                 paramType: param.type,
-                payload,
+                payload
               };
 
               if (category === 'sql') {
@@ -150,7 +150,7 @@ export function injectionSuite(): Suite {
                     owasp: 'API8: Security Misconfiguration',
                     evidence: { ...baseEvidence, matchedError: matched.slice(0, 120) },
                     suite: 'injection',
-                    tags: ['injection', 'sql'],
+                    tags: ['injection', 'sql']
                   });
                   hit = true;
                 }
@@ -171,7 +171,7 @@ export function injectionSuite(): Suite {
                     owasp: 'API8: Security Misconfiguration',
                     evidence: { ...baseEvidence, matchedError: matched.slice(0, 120) },
                     suite: 'injection',
-                    tags: ['injection', 'nosql'],
+                    tags: ['injection', 'nosql']
                   });
                   hit = true;
                 }
@@ -190,7 +190,7 @@ export function injectionSuite(): Suite {
                   owasp: 'API8: Security Misconfiguration',
                   evidence: { ...baseEvidence, evaluated: '49' },
                   suite: 'injection',
-                  tags: ['injection', 'template'],
+                  tags: ['injection', 'template']
                 });
                 hit = true;
               }
@@ -208,7 +208,7 @@ export function injectionSuite(): Suite {
                   owasp: 'API8: Security Misconfiguration',
                   evidence: baseEvidence,
                   suite: 'injection',
-                  tags: ['injection', 'command'],
+                  tags: ['injection', 'command']
                 });
                 hit = true;
               }
@@ -218,6 +218,6 @@ export function injectionSuite(): Suite {
       }
 
       return findings;
-    },
+    }
   };
 }

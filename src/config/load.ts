@@ -36,7 +36,9 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
   const merged = {
     ...fileConfig,
     target: {
-      ...(typeof fileConfig.target === 'object' && fileConfig.target !== null ? fileConfig.target as Record<string, unknown> : {}),
+      ...(typeof fileConfig.target === 'object' && fileConfig.target !== null
+        ? (fileConfig.target as Record<string, unknown>)
+        : {}),
       ...(args.baseUrl ? { baseUrl: args.baseUrl } : {}),
       ...(args.openapi ? { openapi: args.openapi } : {})
     },

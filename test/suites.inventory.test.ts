@@ -6,9 +6,7 @@ import type { LoadedApiSpec } from '../src/openapi/types.js';
 
 // Probe order: /swagger, /openapi.json, /api-docs, /graphql, /debug, /actuator, /metrics,
 //              /v1/, /api/v1/, then POST /graphql (introspection)
-function makeQueue(
-  overrides: Record<number, { status: number; bodyText?: string }> = {}
-) {
+function makeQueue(overrides: Record<number, { status: number; bodyText?: string }> = {}) {
   return Array.from({ length: 10 }, (_, i) => ({
     status: overrides[i]?.status ?? 404,
     bodyText: overrides[i]?.bodyText ?? ''
@@ -102,7 +100,9 @@ describe('inventory suite', () => {
 
   it('emits graphql introspection finding when schema data is returned', async () => {
     // index 9 = POST /graphql introspection
-    const introspectionBody = JSON.stringify({ data: { __schema: { queryType: { name: 'Query' } } } });
+    const introspectionBody = JSON.stringify({
+      data: { __schema: { queryType: { name: 'Query' } } }
+    });
     mockFetchQueue(makeQueue({ 9: { status: 200, bodyText: introspectionBody } }));
 
     const findings = await inventorySuite().run(makeSuiteCtx());
@@ -118,7 +118,9 @@ describe('inventory suite', () => {
 
   it('does not emit introspection finding when server disables introspection', async () => {
     // Server returns 200 but with an errors array (introspection disabled)
-    const errorBody = JSON.stringify({ errors: [{ message: 'GraphQL introspection is not allowed' }] });
+    const errorBody = JSON.stringify({
+      errors: [{ message: 'GraphQL introspection is not allowed' }]
+    });
     mockFetchQueue(makeQueue({ 9: { status: 200, bodyText: errorBody } }));
 
     const findings = await inventorySuite().run(makeSuiteCtx());

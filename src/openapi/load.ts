@@ -68,7 +68,10 @@ export async function loadOpenApi(source: string): Promise<LoadedApiSpec> {
   const raw = parseSpecText(text, source);
 
   // Validate + dereference ($ref) for suite-friendly consumption.
-  const deref = (await SwaggerParser.dereference(raw as OpenAPI.Document)) as Record<string, unknown>;
+  const deref = (await SwaggerParser.dereference(raw as OpenAPI.Document)) as Record<
+    string,
+    unknown
+  >;
   const endpoints = extractEndpoints(deref);
 
   return { source, spec: deref, endpoints };

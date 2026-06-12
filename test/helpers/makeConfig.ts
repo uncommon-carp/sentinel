@@ -15,7 +15,14 @@ export function makeConfig(
       compareUnauthed: authType !== 'none',
       bearerToken: authType === 'bearer' ? 'test-token' : undefined
     },
-    suites: { headers: true, cors: true, auth: true, ratelimit: true, inventory: true, injection: false },
+    suites: {
+      headers: true,
+      cors: true,
+      auth: true,
+      ratelimit: true,
+      inventory: true,
+      injection: false
+    },
     injection: { paramTypes: ['query', 'body'], categories: ['sql', 'template'] },
     ratelimit: { burstCount: 10, delayMs: 0 },
     scope: {
@@ -38,6 +45,9 @@ export function makeSuiteCtx(
   authType: 'none' | 'basic' | 'bearer' | 'apiKey' = 'none'
 ): SuiteContext {
   const config = makeConfig(baseUrl, authType);
-  const http = new HttpClient({ baseUrl: config.target.baseUrl, timeoutMs: config.active.timeoutMs });
+  const http = new HttpClient({
+    baseUrl: config.target.baseUrl,
+    timeoutMs: config.active.timeoutMs
+  });
   return { http, config, logger: createLogger({ verbose: false }) };
 }

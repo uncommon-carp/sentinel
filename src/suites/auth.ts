@@ -41,7 +41,10 @@ function decodeJwt(
     const payload = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString('utf8'));
     if (typeof header !== 'object' || header === null) return null;
     if (typeof payload !== 'object' || payload === null) return null;
-    return { header: header as Record<string, unknown>, payload: payload as Record<string, unknown> };
+    return {
+      header: header as Record<string, unknown>,
+      payload: payload as Record<string, unknown>
+    };
   } catch {
     return null;
   }
@@ -122,8 +125,7 @@ function inspectJwts(tokens: string[], res: HttpResponse): Finding[] {
           id: 'auth.jwt_long_ttl',
           title: 'JWT with unusually long TTL detected in response',
           severity: 'low',
-          description:
-            `A JWT valid for more than ${JWT_TTL_LIMIT / 3600}h was found in a response. Long-lived access tokens extend the window of opportunity if a token is compromised.`,
+          description: `A JWT valid for more than ${JWT_TTL_LIMIT / 3600}h was found in a response. Long-lived access tokens extend the window of opportunity if a token is compromised.`,
           whyItMatters:
             'Short-lived tokens limit attacker dwell time after a compromise — if a token leaks, it expires quickly. Long-lived access tokens negate this protection without requiring explicit revocation.',
           remediation:

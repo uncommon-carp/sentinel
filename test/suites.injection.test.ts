@@ -45,7 +45,12 @@ describe('injection suite', () => {
     const logged: string[] = [];
     const ctx = {
       ...makeSuiteCtx(),
-      logger: { info: (m: string) => logged.push(m), warn: () => {}, error: () => {}, debug: () => {} }
+      logger: {
+        info: (m: string) => logged.push(m),
+        warn: () => {},
+        error: () => {},
+        debug: () => {}
+      }
     };
 
     const findings = await injectionSuite().run(ctx);
@@ -113,7 +118,12 @@ describe('injection suite', () => {
       ...makeSuiteCtx(),
       api,
       selectedEndpoints: [{ method: 'get', path: '/search' }],
-      logger: { info: (m: string) => logged.push(m), warn: () => {}, error: () => {}, debug: () => {} }
+      logger: {
+        info: (m: string) => logged.push(m),
+        warn: () => {},
+        error: () => {},
+        debug: () => {}
+      }
     };
     ctx.config.injection.categories = ['sql'];
     ctx.config.active.maxRequestsPerSuite = 1;

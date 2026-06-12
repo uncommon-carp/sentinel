@@ -5,7 +5,9 @@ import { makeSuiteCtx } from './helpers/makeConfig.js';
 
 describe('headers suite', () => {
   it('emits findings when security headers are missing', async () => {
-    const fetchMock = mockFetchQueue([{ status: 200, headers: { 'content-type': 'application/json' }, bodyText: '{}' }]);
+    const fetchMock = mockFetchQueue([
+      { status: 200, headers: { 'content-type': 'application/json' }, bodyText: '{}' }
+    ]);
 
     const findings = await headersSuite().run(makeSuiteCtx());
 
@@ -15,7 +17,17 @@ describe('headers suite', () => {
   });
 
   it('emits fewer findings when some headers are present', async () => {
-    mockFetchQueue([{ status: 200, headers: { 'strict-transport-security': 'max-age=31536000; includeSubDomains', 'x-content-type-options': 'nosniff', 'content-type': 'application/json' }, bodyText: '{}' }]);
+    mockFetchQueue([
+      {
+        status: 200,
+        headers: {
+          'strict-transport-security': 'max-age=31536000; includeSubDomains',
+          'x-content-type-options': 'nosniff',
+          'content-type': 'application/json'
+        },
+        bodyText: '{}'
+      }
+    ]);
 
     const findings = await headersSuite().run(makeSuiteCtx());
 
