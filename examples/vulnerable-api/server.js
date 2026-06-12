@@ -108,7 +108,7 @@ app.get('/api/v2/auth', (_req, res) => {
 });
 
 // ── Injection: SQL error reflection ───────────────────────────────────────────
-// Triggers injection.error_disclosure when a SQL-like payload is sent to ?q=.
+// Triggers injection.sql_error_disclosure when a SQL-like payload is sent to ?q=.
 // Set VULNERABLE_SQL=false to disable.
 
 if (VULNERABLE_SQL) {

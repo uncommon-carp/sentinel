@@ -7,8 +7,8 @@
  * one finding and moves on — never piles multiple findings onto the same parameter.
  *
  * Checks:
- * - SQL error strings in response body  → injection.error_disclosure (high)
- * - NoSQL error strings in response body → injection.error_disclosure (high)
+ * - SQL error strings in response body  → injection.sql_error_disclosure (high)
+ * - NoSQL error strings in response body → injection.nosql_error_disclosure (high)
  * - Template expression evaluation: {{7*7}} → 49 → injection.possible_template_injection (high)
  * - Command echo: sentinel9 in response → injection.possible_command_injection (critical)
  *
@@ -139,7 +139,7 @@ export function injectionSuite(): Suite {
                 const matched = matchErrorPattern(body, SQL_ERROR_PATTERNS);
                 if (matched) {
                   findings.push({
-                    id: 'injection.error_disclosure',
+                    id: 'injection.sql_error_disclosure',
                     title: 'SQL injection error string detected in response',
                     severity: 'high',
                     description: `A SQL injection payload sent to the "${param.name}" ${param.type} parameter at ${ep.method.toUpperCase()} ${ep.path} produced a response containing SQL error strings.`,
@@ -160,7 +160,7 @@ export function injectionSuite(): Suite {
                 const matched = matchErrorPattern(body, NOSQL_ERROR_PATTERNS);
                 if (matched) {
                   findings.push({
-                    id: 'injection.error_disclosure',
+                    id: 'injection.nosql_error_disclosure',
                     title: 'NoSQL injection error string detected in response',
                     severity: 'high',
                     description: `A NoSQL injection payload sent to the "${param.name}" ${param.type} parameter at ${ep.method.toUpperCase()} ${ep.path} produced a response containing NoSQL error strings.`,

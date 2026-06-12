@@ -26,12 +26,25 @@ function matchesAny(res: RegExp[], value: string): boolean {
   return res.some((r) => r.test(value));
 }
 
-function normalizeEndpoints(endpoints: ApiEndpoint[]): ApiEndpoint[] {
+function extractBasePath(api: LoadedApiSpec): string {
+  const servers = (api.spec as Record<string, unknown>)?.servers;
+  if (!Array.isArray(servers) || servers.length === 0) return '';
+  const url = (servers[0] as Record<string, unknown>)?.url;
+  if (typeof url !== 'string') return '';
+  try {
+    return new URL(url).pathname.replace(/\/$/, '');
+  } catch {
+    // relative server URL like /api/v2
+    return url.replace(/\/$/, '');
+  }
+}
+
+function normalizeEndpoints(endpoints: ApiEndpoint[], basePath: string): ApiEndpoint[] {
   const seen = new Set<string>();
   const out: ApiEndpoint[] = [];
   for (const e of endpoints) {
     const method = e.method.toLowerCase();
-    const path = e.path;
+    const path = `${basePath}${e.path}`;
     const key = `${method} ${path}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -55,7 +68,9 @@ export function selectEndpoints(args: {
   const exclude = compileRegexes(config.scope.excludePaths);
   const prefer = compileRegexes(config.scope.prefer);
 
-  const all = normalizeEndpoints(api.endpoints);
+  const basePath = extractBasePath(api)
+
+  const all = normalizeEndpoints(api.endpoints, basePath);
 
   let filtered = all.filter((e) => allowedMethods.has(e.method));
 
