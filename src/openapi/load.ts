@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import SwaggerParser from '@apidevtools/swagger-parser';
 import YAML from 'yaml';
+import type { OpenAPI } from 'openapi-types';
 import type { LoadedApiSpec } from './types.js';
 
 function isUrl(input: string): boolean {
@@ -37,7 +38,7 @@ function parseSpecText(text: string, source: string): unknown {
   }
 }
 
-function extractEndpoints(spec: any): { method: string; path: string }[] {
+function extractEndpoints(spec: Record<string, unknown>): { method: string; path: string }[] {
   const paths = spec?.paths;
   if (!paths || typeof paths !== 'object') return [];
 
@@ -67,7 +68,7 @@ export async function loadOpenApi(source: string): Promise<LoadedApiSpec> {
   const raw = parseSpecText(text, source);
 
   // Validate + dereference ($ref) for suite-friendly consumption.
-  const deref = (await SwaggerParser.dereference(raw as any)) as Record<string, unknown>;
+  const deref = (await SwaggerParser.dereference(raw as OpenAPI.Document)) as Record<string, unknown>;
   const endpoints = extractEndpoints(deref);
 
   return { source, spec: deref, endpoints };

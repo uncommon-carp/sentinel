@@ -49,8 +49,8 @@ describe('headers suite', () => {
     expect(xcto?.evidence!.count).toBe(2);
     expect(xcto?.evidence!.probed).toBe(3);
 
-    const hstsAffected = (hsts!.evidence as any).affected as Array<unknown>;
-    const xctoAffected = (xcto!.evidence as any).affected as Array<unknown>;
+    const hstsAffected = hsts!.evidence!.affected as Array<unknown>;
+    const xctoAffected = xcto!.evidence!.affected as Array<unknown>;
 
     expect(hstsAffected).toHaveLength(2);
     expect(xctoAffected).toHaveLength(2);
