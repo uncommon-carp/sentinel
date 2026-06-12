@@ -10,7 +10,7 @@ export default tseslint.config(
       semi: ['error', 'always'],
       quotes: ['error', 'single', { avoidEscape: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn'
+      '@typescript-eslint/no-explicit-any': 'error'
     }
   },
   {

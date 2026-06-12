@@ -1,0 +1,110 @@
+# .github/workflows/review.yml
+name: Review
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  review:
+    name: Code Review
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      # --- Static analysis ---
+      - name: Typecheck (src)
+        run: npm run typecheck
+
+      - name: Typecheck (test)
+        run: npm run typecheck:test
+
+      - name: Lint
+        run: npm run lint -- --max-warnings 0
+
+      - name: Format check
+        run: npm run format:check
+
+      # --- Tests with coverage ---
+      - name: Test with coverage
+        run: npx vitest run --coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+          retention-days: 7
+
+      # --- Structural checks ---
+      - name: Suite registration
+        shell: bash
+        run: |
+          for f in src/suites/*.ts; do
+            name=$(basename "$f" .ts)
+            [ "$name" = "index" ] && continue
+            if ! grep -q "$name" src/suites/index.ts; then
+              echo "::error file=src/suites/index.ts::Suite '$name.ts' is not registered in suites/index.ts"
+              exit 1
+            fi
+          done
+
+      - name: Suite test coverage
+        shell: bash
+        run: |
+          for f in src/suites/*.ts; do
+            name=$(basename "$f" .ts)
+            [ "$name" = "index" ] && continue
+            if [ ! -f "test/suites.$name.test.ts" ]; then
+              echo "::error::src/suites/$name.ts has no corresponding test/suites.$name.test.ts"
+              exit 1
+            fi
+          done
+
+      - name: resolveEndpoints usage
+        shell: bash
+        run: |
+          fail=0
+          for f in src/suites/*.ts; do
+            name=$(basename "$f" .ts)
+            [ "$name" = "index" ] && continue
+            if ! grep -q "resolveEndpoints" "$f"; then
+              echo "::error file=$f::$name.ts does not call resolveEndpoints"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: makeSuiteCtx usage in suite tests
+        shell: bash
+        run: |
+          fail=0
+          for f in test/suites.*.test.ts; do
+            if ! grep -q "makeSuiteCtx" "$f"; then
+              echo "::error file=$f::$(basename $f) does not use makeSuiteCtx"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: CHANGELOG updated
+        shell: bash
+        run: |
+          content=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## \[/{exit} found{print}' CHANGELOG.md | grep -v '^\s*$')
+          if [ -z "$content" ]; then
+            echo "::warning::CHANGELOG.md [Unreleased] section is empty"
+          fi
