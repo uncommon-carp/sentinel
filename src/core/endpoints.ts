@@ -68,7 +68,7 @@ export function selectEndpoints(args: {
   const exclude = compileRegexes(config.scope.excludePaths);
   const prefer = compileRegexes(config.scope.prefer);
 
-  const basePath = extractBasePath(api)
+  const basePath = extractBasePath(api);
 
   const all = normalizeEndpoints(api.endpoints, basePath);
 
