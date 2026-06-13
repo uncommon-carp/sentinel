@@ -84,6 +84,7 @@ src/
     auth.ts
     ratelimit.ts
     inventory.ts
+    injection.ts
 
 examples/
   vulnerable-api/   (deliberately misconfigured Express server for testing)
@@ -110,6 +111,7 @@ Suites receive a narrow execution context:
 - `http`
 - `config`
 - `logger`
+- `selectedEndpoints` — pre-filtered endpoint list derived from the OpenAPI spec and scope config; resolved once at scan time
 - optional `api` metadata from OpenAPI
 
 Suites should not access the filesystem or parse configuration directly.

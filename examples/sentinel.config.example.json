@@ -5,7 +5,9 @@
   },
   "auth": {
     "type": "none",
-    "probePaths": ["/"],
+    "probePaths": [
+      "/"
+    ],
     "compareUnauthed": true
   },
   "suites": {
@@ -17,12 +19,31 @@
   },
   "scope": {
     "enabled": false,
-    "methods": ["get", "head"],
+    "methods": [
+      "get",
+      "head"
+    ],
     "maxEndpoints": 20,
     "includePaths": [],
     "excludePaths": [],
-    "prefer": ["^/health", "^/status", "^/me", "^/api/health"],
+    "prefer": [
+      "^/health",
+      "^/status",
+      "^/me",
+      "^/api/health"
+    ],
     "seed": 0
+  },
+  "injection": {
+    "categories": [
+      "sql",
+      "nosql",
+      "template"
+    ],
+    "paramTypes": [
+      "query",
+      "body"
+    ]
   },
   "active": {
     "enabled": true,
