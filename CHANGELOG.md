@@ -10,13 +10,13 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - **Review workflow** (`.github/workflows/review.yml`): linting, formatting, and usage checks
 
-## 0.2.2 - 2026-05-11
+## [0.2.2] - 2026-05-11
 
 ### Changed
 
 - **Publish workflow** (`.github/workflows/publish.yml`): automated npm publish and GitHub Release creation on version tag push (`v*`). Uses npm OIDC trusted publishing — no stored access token required.
 
-## 0.2.1 - 2026-05-11
+## [0.2.1] - 2026-05-11
 
 ### Changed
 
@@ -25,7 +25,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **`resolveEndpoints` helper** (`core/endpoints.ts`): extracts the shared "use selectedEndpoints or fall back to GET /" logic that was duplicated across the CORS, headers, and rate limit suites.
 - **Removed dead config fallbacks**: all suites were applying `?? 20` / `Math.max(1, ...)` guards to `maxRequestsPerSuite`, and the rate limit suite had similar guards on `burstCount` and `delayMs`. The Zod schema already enforces these bounds; the fallbacks are removed.
 
-## 0.2.0 - 2026-05-11
+## [0.2.0] - 2026-05-11
 
 ### Added
 
