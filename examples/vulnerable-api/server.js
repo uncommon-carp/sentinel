@@ -9,19 +9,19 @@ app.use(express.json());
 // Flags default to the misconfigured state so Sentinel finds everything out of
 // the box. Set env vars to fix individual issues and verify findings disappear.
 
-const PORT                  = parseInt(process.env.PORT                  ?? '3000', 10);
-const ADD_SECURITY_HEADERS  = process.env.ADD_SECURITY_HEADERS           === 'true'; // default: missing
-const CORS_STRICT           = process.env.CORS_STRICT                    === 'true'; // default: reflect origin
-const CORS_WILDCARD         = process.env.CORS_WILDCARD                  === 'true'; // default: off
-const EXPOSE_SWAGGER        = process.env.EXPOSE_SWAGGER                 !== 'false'; // default: exposed
-const LEGACY_API            = process.env.LEGACY_API                     !== 'false'; // default: alive
-const GRAPHQL_INTROSPECTION = process.env.GRAPHQL_INTROSPECTION          !== 'false'; // default: enabled
-const JWT_ALG               = process.env.JWT_ALG                        ?? 'none';   // default: alg:none
-const JWT_TTL_SECONDS       = parseInt(process.env.JWT_TTL_SECONDS       ?? '99999', 10); // default: ~27h
-const JWT_MISSING_EXP       = process.env.JWT_MISSING_EXP               === 'true';  // default: exp included
-const AUTH_REQUIRED         = process.env.AUTH_REQUIRED                  === 'true';  // default: no enforcement
-const VULNERABLE_SQL        = process.env.VULNERABLE_SQL                 !== 'false'; // default: on
-const VULNERABLE_TEMPLATE   = process.env.VULNERABLE_TEMPLATE            !== 'false'; // default: on
+const PORT = parseInt(process.env.PORT ?? '3000', 10);
+const ADD_SECURITY_HEADERS = process.env.ADD_SECURITY_HEADERS === 'true'; // default: missing
+const CORS_STRICT = process.env.CORS_STRICT === 'true'; // default: reflect origin
+const CORS_WILDCARD = process.env.CORS_WILDCARD === 'true'; // default: off
+const EXPOSE_SWAGGER = process.env.EXPOSE_SWAGGER !== 'false'; // default: exposed
+const LEGACY_API = process.env.LEGACY_API !== 'false'; // default: alive
+const GRAPHQL_INTROSPECTION = process.env.GRAPHQL_INTROSPECTION !== 'false'; // default: enabled
+const JWT_ALG = process.env.JWT_ALG ?? 'none'; // default: alg:none
+const JWT_TTL_SECONDS = parseInt(process.env.JWT_TTL_SECONDS ?? '99999', 10); // default: ~27h
+const JWT_MISSING_EXP = process.env.JWT_MISSING_EXP === 'true'; // default: exp included
+const AUTH_REQUIRED = process.env.AUTH_REQUIRED === 'true'; // default: no enforcement
+const VULNERABLE_SQL = process.env.VULNERABLE_SQL !== 'false'; // default: on
+const VULNERABLE_TEMPLATE = process.env.VULNERABLE_TEMPLATE !== 'false'; // default: on
 
 // ── Security headers ───────────────────────────────────────────────────────────
 // Disabled by default — triggers headers.missing_hsts, missing_xcto, missing_referrer_policy.
@@ -68,7 +68,7 @@ function b64u(obj) {
 
 function makeJwt() {
   const now = Math.floor(Date.now() / 1000);
-  const header  = { alg: JWT_ALG, typ: 'JWT' };
+  const header = { alg: JWT_ALG, typ: 'JWT' };
   const payload = { sub: 'demo', iat: now };
   if (!JWT_MISSING_EXP) payload.exp = now + JWT_TTL_SECONDS;
   const sig = JWT_ALG === 'none' ? '' : Buffer.from('sig').toString('base64url');
@@ -98,7 +98,12 @@ app.get('/api/v2/health', (_req, res) => {
 });
 
 app.get('/api/v2/users', requireAuth, (_req, res) => {
-  res.json({ users: [{ id: 1, name: 'Alice' }, { id: 2, name: 'Bob' }] });
+  res.json({
+    users: [
+      { id: 1, name: 'Alice' },
+      { id: 2, name: 'Bob' }
+    ]
+  });
 });
 
 // Auth probe endpoint — returns a JWT in the body.
@@ -130,7 +135,11 @@ if (VULNERABLE_TEMPLATE) {
   app.get('/api/v2/greet', (req, res) => {
     const name = String(req.query.name ?? 'world');
     const rendered = name.replace(/\{\{([^}]+)\}\}/g, (_, expr) => {
-      try { return String(eval(expr)); } catch { return expr; } // eslint-disable-line no-eval
+      try {
+        return String(eval(expr));
+      } catch {
+        return expr;
+      } // eslint-disable-line no-eval
     });
     res.json({ message: `Hello, ${rendered}!` });
   });
@@ -157,9 +166,16 @@ if (LEGACY_API) {
 app.get('/debug', (_req, res) => {
   res.json({
     config: {
-      ADD_SECURITY_HEADERS, CORS_STRICT, CORS_WILDCARD, EXPOSE_SWAGGER,
-      LEGACY_API, GRAPHQL_INTROSPECTION, JWT_ALG,
-      JWT_TTL_SECONDS, JWT_MISSING_EXP, AUTH_REQUIRED
+      ADD_SECURITY_HEADERS,
+      CORS_STRICT,
+      CORS_WILDCARD,
+      EXPOSE_SWAGGER,
+      LEGACY_API,
+      GRAPHQL_INTROSPECTION,
+      JWT_ALG,
+      JWT_TTL_SECONDS,
+      JWT_MISSING_EXP,
+      AUTH_REQUIRED
     }
   });
 });
@@ -176,11 +192,25 @@ if (EXPOSE_SWAGGER) {
       info: { title: 'Vulnerable API', version: '2.0.0' },
       servers: [{ url: `http://localhost:${PORT}/api/v2` }],
       paths: {
-        '/health': { get: { summary: 'Health check',   responses: { '200': { description: 'OK' } } } },
-        '/users':  { get: { summary: 'List users',     responses: { '200': { description: 'OK' } } } },
-        '/auth':   { get: { summary: 'Get auth token', responses: { '200': { description: 'Returns a JWT' } } } },
-        '/search': { get: { summary: 'Search',         parameters: [{ name: 'q',    in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } } },
-        '/greet':  { get: { summary: 'Greet user',     parameters: [{ name: 'name', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'OK' } } } }
+        '/health': { get: { summary: 'Health check', responses: { 200: { description: 'OK' } } } },
+        '/users': { get: { summary: 'List users', responses: { 200: { description: 'OK' } } } },
+        '/auth': {
+          get: { summary: 'Get auth token', responses: { 200: { description: 'Returns a JWT' } } }
+        },
+        '/search': {
+          get: {
+            summary: 'Search',
+            parameters: [{ name: 'q', in: 'query', schema: { type: 'string' } }],
+            responses: { 200: { description: 'OK' } }
+          }
+        },
+        '/greet': {
+          get: {
+            summary: 'Greet user',
+            parameters: [{ name: 'name', in: 'query', schema: { type: 'string' } }],
+            responses: { 200: { description: 'OK' } }
+          }
+        }
       }
     });
   });
@@ -213,22 +243,48 @@ if (GRAPHQL_INTROSPECTION) {
 // ── Start ──────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
-  const mark = (active) => active ? '[✓]' : '[ ]';
+  const mark = (active) => (active ? '[✓]' : '[ ]');
   console.log(`\nVulnerable API  →  http://localhost:${PORT}\n`);
   console.log('Misconfigurations  ([✓] = active, will trigger a Sentinel finding)');
-  console.log(`  ${mark(!ADD_SECURITY_HEADERS)} Missing security headers       ADD_SECURITY_HEADERS=true        to fix`);
-  console.log(`  ${mark(!CORS_STRICT && !CORS_WILDCARD)} CORS reflects arbitrary origin  CORS_STRICT=true                 to fix`);
-  console.log(`  ${mark(CORS_WILDCARD)}  CORS wildcard + credentials    CORS_WILDCARD=true               to trigger`);
-  console.log(`  ${mark(EXPOSE_SWAGGER)} Swagger / OpenAPI exposed      EXPOSE_SWAGGER=false             to hide`);
-  console.log(`  ${mark(LEGACY_API)} Legacy /api/v1/ responding     LEGACY_API=false                 to disable`);
-  console.log(`  ${mark(GRAPHQL_INTROSPECTION)} GraphQL introspection enabled  GRAPHQL_INTROSPECTION=false      to disable`);
-  console.log(`  ${mark(JWT_ALG === 'none')} JWT alg:none                   JWT_ALG=HS256                    to fix`);
-  console.log(`  ${mark(JWT_TTL_SECONDS > 86400)} JWT long TTL (${Math.round(JWT_TTL_SECONDS / 3600)}h)            JWT_TTL_SECONDS=3600             to shorten`);
-  console.log(`  ${mark(JWT_MISSING_EXP)} JWT missing exp claim          JWT_MISSING_EXP=true             to trigger`);
-  console.log(`  ${mark(!AUTH_REQUIRED)} Auth enforcement disabled      AUTH_REQUIRED=true               to enforce`);
-  console.log(`  ${mark(VULNERABLE_SQL)} SQL error reflection           VULNERABLE_SQL=false             to disable`);
-  console.log(`  ${mark(VULNERABLE_TEMPLATE)} Template expression eval       VULNERABLE_TEMPLATE=false        to disable`);
+  console.log(
+    `  ${mark(!ADD_SECURITY_HEADERS)} Missing security headers       ADD_SECURITY_HEADERS=true        to fix`
+  );
+  console.log(
+    `  ${mark(!CORS_STRICT && !CORS_WILDCARD)} CORS reflects arbitrary origin  CORS_STRICT=true                 to fix`
+  );
+  console.log(
+    `  ${mark(CORS_WILDCARD)}  CORS wildcard + credentials    CORS_WILDCARD=true               to trigger`
+  );
+  console.log(
+    `  ${mark(EXPOSE_SWAGGER)} Swagger / OpenAPI exposed      EXPOSE_SWAGGER=false             to hide`
+  );
+  console.log(
+    `  ${mark(LEGACY_API)} Legacy /api/v1/ responding     LEGACY_API=false                 to disable`
+  );
+  console.log(
+    `  ${mark(GRAPHQL_INTROSPECTION)} GraphQL introspection enabled  GRAPHQL_INTROSPECTION=false      to disable`
+  );
+  console.log(
+    `  ${mark(JWT_ALG === 'none')} JWT alg:none                   JWT_ALG=HS256                    to fix`
+  );
+  console.log(
+    `  ${mark(JWT_TTL_SECONDS > 86400)} JWT long TTL (${Math.round(JWT_TTL_SECONDS / 3600)}h)            JWT_TTL_SECONDS=3600             to shorten`
+  );
+  console.log(
+    `  ${mark(JWT_MISSING_EXP)} JWT missing exp claim          JWT_MISSING_EXP=true             to trigger`
+  );
+  console.log(
+    `  ${mark(!AUTH_REQUIRED)} Auth enforcement disabled      AUTH_REQUIRED=true               to enforce`
+  );
+  console.log(
+    `  ${mark(VULNERABLE_SQL)} SQL error reflection           VULNERABLE_SQL=false             to disable`
+  );
+  console.log(
+    `  ${mark(VULNERABLE_TEMPLATE)} Template expression eval       VULNERABLE_TEMPLATE=false        to disable`
+  );
   console.log('');
   console.log(`Run against this target:`);
-  console.log(`  npx sentinel scan --url http://localhost:${PORT} --config sentinel.example.json\n`);
+  console.log(
+    `  npx sentinel scan --url http://localhost:${PORT} --config sentinel.example.json\n`
+  );
 });

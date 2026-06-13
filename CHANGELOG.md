@@ -15,6 +15,11 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - **Review workflow** (`.github/workflows/review.yml`): linting, formatting, and usage checks
 
+### Changed
+
+- **Scan runner** (`src/core/runner.ts`): added debug-level logging for scan start, suite completion, and scan finish (including duration).
+- **Code refactor**: destructured `logger` from `args.ctx` for cleaner and more consistent access across the runner.
+
 ## [0.2.2] - 2026-05-11
 
 ### Changed

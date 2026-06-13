@@ -13,23 +13,31 @@ export async function runScan(args: {
   const started = Date.now();
   const findings: RunResult['findings'] = [];
 
+  // Destructure logger for cleaner calls
+  const { logger } = args.ctx;
+
+  /*
+   * The runner is intentionally "dumb": it does not interpret findings,
+   * apply severity policy, or suppress results.
+   */
+
   // Log scan start
-  args.ctx.logger.debug('Scan started', { suiteCount: args.suites.length });
+  logger.debug('Scan started', { suiteCount: args.suites.length });
 
   for (const suite of args.suites) {
-    args.ctx.logger.info(`Running suite: ${suite.name}`);
+    logger.info(`Running suite: ${suite.name}`);
     const suiteFindings = await suite.run(args.ctx);
     findings.push(...suiteFindings);
-    
+
     // Log suite completion
-    args.ctx.logger.debug(`Finished suite: ${suite.name}`, { findingsCount: suiteFindings.length });
+    logger.debug(`Finished suite: ${suite.name}`, { findingsCount: suiteFindings.length });
   }
 
   const finished = Date.now();
   const durationMs = finished - started;
 
   // Log scan completion
-  args.ctx.logger.debug('Scan complete', { totalFindings: findings.length, durationMs });
+  logger.debug('Scan complete', { totalFindings: findings.length, durationMs });
 
   const result: RunResult = {
     meta: {
@@ -48,7 +56,7 @@ export async function runScan(args: {
     const ext = reporter.name === 'markdown' ? 'md' : reporter.name;
     const outPath = path.join(args.outputDir, `sentinel-report.${ext}`);
     fs.writeFileSync(outPath, rendered, 'utf-8');
-    args.ctx.logger.info(`Wrote report: ${outPath}`);
+    logger.info(`Wrote report: ${outPath}`);
   }
 
   return result;
