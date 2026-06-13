@@ -26,8 +26,15 @@ describe('CLI smoke', () => {
       { status: 200, headers: {} }, // ratelimit burst 1
       { status: 200, headers: {} }, // ratelimit burst 2
       // inventory GETs: /swagger /openapi.json /api-docs /graphql /debug /actuator /metrics /v1/ /api/v1/
-      { status: 404 }, { status: 404 }, { status: 404 }, { status: 404 }, { status: 404 },
-      { status: 404 }, { status: 404 }, { status: 404 }, { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
       // inventory: POST /graphql introspection
       { status: 404 }
     ]);

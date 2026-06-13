@@ -57,7 +57,8 @@ export function corsSuite(): Suite {
             description: 'Server reflected the Origin header value in Access-Control-Allow-Origin.',
             whyItMatters:
               'Reflecting arbitrary origins grants any domain CORS access. Combined with user credentials, this allows malicious sites to make authenticated API calls on behalf of a victim without their knowledge.',
-            remediation: 'Validate Origin against an allowlist; avoid reflecting arbitrary origins.',
+            remediation:
+              'Validate Origin against an allowlist; avoid reflecting arbitrary origins.',
             owasp: 'API8: Security Misconfiguration',
             evidence: { url: res.url, origin, acao },
             suite: 'cors',

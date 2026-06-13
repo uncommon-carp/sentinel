@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: [20]
+        node: [22]
 
     steps:
       - name: Checkout
@@ -33,6 +33,12 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint -- --max-warnings 0
+
+      - name: Format check
+        run: npm run format:check
 
       - name: Test
         run: npm test

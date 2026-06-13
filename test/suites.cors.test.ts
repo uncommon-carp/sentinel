@@ -5,7 +5,9 @@ import { makeSuiteCtx } from './helpers/makeConfig.js';
 
 describe('cors suite', () => {
   it('emits nothing for a happy path', async () => {
-    mockFetchQueue([{ status: 200, headers: { 'access-control-allow-origin': 'https://example.com' } }]);
+    mockFetchQueue([
+      { status: 200, headers: { 'access-control-allow-origin': 'https://example.com' } }
+    ]);
 
     const findings = await corsSuite().run(makeSuiteCtx());
 
@@ -13,7 +15,13 @@ describe('cors suite', () => {
   });
 
   it('emits a finding when ACAO reflects an arbitrary Origin', async () => {
-    mockFetchQueue([{ status: 200, headers: { 'access-control-allow-origin': 'https://sentinel.invalid' }, bodyText: 'ok' }]);
+    mockFetchQueue([
+      {
+        status: 200,
+        headers: { 'access-control-allow-origin': 'https://sentinel.invalid' },
+        bodyText: 'ok'
+      }
+    ]);
 
     const findings = await corsSuite().run(makeSuiteCtx());
 
@@ -24,7 +32,13 @@ describe('cors suite', () => {
   });
 
   it('emits a finding when ACAO is * and ACC is true', async () => {
-    mockFetchQueue([{ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-credentials': 'true' }, bodyText: 'ok' }]);
+    mockFetchQueue([
+      {
+        status: 200,
+        headers: { 'access-control-allow-origin': '*', 'access-control-allow-credentials': 'true' },
+        bodyText: 'ok'
+      }
+    ]);
 
     const findings = await corsSuite().run(makeSuiteCtx());
 

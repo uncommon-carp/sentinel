@@ -23,7 +23,10 @@ describe('auth suite', () => {
   });
 
   it('emits a finding when auth vs unauthed request yield same result', async () => {
-    mockFetchQueue([{ status: 200, bodyText: 'ok' }, { status: 200, bodyText: 'ok' }]);
+    mockFetchQueue([
+      { status: 200, bodyText: 'ok' },
+      { status: 200, bodyText: 'ok' }
+    ]);
 
     const findings = await authSuite().run(makeSuiteCtx('https://api.example.com', 'bearer'));
 
@@ -77,7 +80,10 @@ describe('auth suite', () => {
 
   it('emits auth.jwt_expired_accepted when a 2xx response contains an already-expired JWT', async () => {
     const now = Math.floor(Date.now() / 1000);
-    const jwt = makeJwt({ alg: 'HS256', typ: 'JWT' }, { sub: '1', iat: now - 7200, exp: now - 3600 });
+    const jwt = makeJwt(
+      { alg: 'HS256', typ: 'JWT' },
+      { sub: '1', iat: now - 7200, exp: now - 3600 }
+    );
     mockFetchQueue([{ status: 200, bodyText: JSON.stringify({ token: jwt }) }]);
 
     const findings = await authSuite().run(makeSuiteCtx());
@@ -98,6 +104,6 @@ describe('auth suite', () => {
     const finding = findings.find((f) => f.id === 'auth.jwt_long_ttl');
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe('low');
-    expect((finding?.evidence?.ttlSeconds as number)).toBeGreaterThan(86400);
+    expect(finding?.evidence?.ttlSeconds as number).toBeGreaterThan(86400);
   });
 });

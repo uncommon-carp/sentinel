@@ -32,7 +32,7 @@ const REGISTRY: Record<SuiteName, () => Suite> = {
   auth: authSuite,
   ratelimit: rateLimitSuite,
   inventory: inventorySuite,
-  injection: injectionSuite,
+  injection: injectionSuite
 };
 
 const ORDER: SuiteName[] = ['headers', 'cors', 'auth', 'ratelimit', 'inventory', 'injection'];
