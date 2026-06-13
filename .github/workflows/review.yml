@@ -82,6 +82,11 @@ jobs:
           for f in src/suites/*.ts; do
             name=$(basename "$f" .ts)
             [ "$name" = "index" ] && continue
+            # Only check suites that iterate selected endpoints
+            # auth uses probePaths; inventory probes its own path list
+            if [[ "$name" == "auth" || "$name" == "inventory" ]]; then
+              continue
+            fi
             if ! grep -q "resolveEndpoints" "$f"; then
               echo "::error file=$f::$name.ts does not call resolveEndpoints"
               fail=1
