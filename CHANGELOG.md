@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## Unreleased
 
+### Added
+
 - **Injection Suite**
 
 - **Review workflow** (`.github/workflows/review.yml`): linting, formatting, and usage checks

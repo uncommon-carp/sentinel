@@ -109,7 +109,7 @@ jobs:
       - name: CHANGELOG updated
         shell: bash
         run: |
-          content=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## /{exit} found{print}' CHANGELOG.md | grep -v '^\s*$')
+          content=$(awk '/^## \[Unreleased\]/{found=1; next} found && /^## /{exit} found{print}' CHANGELOG.md | grep -v '^\s*$' || true)
           if [ -z "$content" ]; then
             echo "::warning::CHANGELOG.md [Unreleased] section is empty"
           fi
