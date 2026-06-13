@@ -2,7 +2,7 @@
 
 Sentinel is a CLI-based API security scanner written in TypeScript. It runs a curated set of **passive** and **controlled active** checks against HTTP APIs and produces **structured JSON** and **human-readable Markdown** reports.
 
-The goal is to provide a fast, repeatable first-pass security signal for backend teams — locally during development or automatically in CI.
+The goal is to provide a fast, repeatable first-pass security signal for backend teams: locally during development or automatically in CI.
 
 ---
 
@@ -12,10 +12,10 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 
 - HTTP security headers (HSTS, X-Content-Type-Options, Referrer-Policy)
 - CORS misconfiguration detection (wildcard + credentials, origin reflection)
-- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics, JWT inspection — alg:none, missing exp, expired tokens, excessive TTL)
+- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics, JWT inspection > alg:none, missing exp, expired tokens, excessive TTL)
 - Rate limiting detection (header inspection, burst probe, Retry-After coverage)
 - API inventory (sensitive endpoint exposure, stale version detection)
-- Injection probes (SQL, NoSQL, template error-string detection; command injection with explicit opt-in) — requires OpenAPI spec
+- Injection probes (SQL, NoSQL, template error-string detection; command injection with explicit opt-in), requires OpenAPI spec
 
 **Infrastructure:**
 
@@ -218,7 +218,7 @@ Requires an OpenAPI spec. When enabled, probes parameters extracted from the spe
 | `categories` | Payload categories to use: `sql`, `nosql`, `template`, `command` (default: `["sql", "template"]`) |
 | `paramTypes` | Parameter locations to probe: `query`, `body` (default: `["query", "body"]`)                      |
 
-> **Note:** `command` injection probing must be explicitly added to `categories` — it is not enabled by default. All injection checks are output-based only; no time-based payloads are used.
+> **Note:** `command` injection probing must be explicitly added to `categories`, it is not enabled by default. All injection checks are output-based only; no time-based payloads are used.
 
 ### Key Concepts
 
