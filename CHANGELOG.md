@@ -66,4 +66,3 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - Suites: headers, CORS, auth.
 - Test suite with deterministic HTTP mocking.
 - Architecture documentation.
-
