@@ -151,6 +151,7 @@ export function authSuite(): Suite {
     name: 'auth',
     description: 'Checks HTTP auth semantics and basic auth enforcement behavior.',
     async run(ctx): Promise<Finding[]> {
+      const { logger } = ctx;
       const findings: Finding[] = [];
 
       const cap = ctx.config.active.maxRequestsPerSuite;
@@ -166,6 +167,7 @@ export function authSuite(): Suite {
       }
 
       for (const ep of toProbe) {
+        logger.debug('Probing path', { probePath: ep });
         const url = new URL(ep.path, ctx.config.target.baseUrl).toString();
 
         const authedRes = await ctx.http.request({
@@ -173,7 +175,9 @@ export function authSuite(): Suite {
           path: ep.path
         });
 
-        findings.push(...inspectJwts(extractJwts(authedRes), authedRes));
+        const jwtResult = inspectJwts(extractJwts(authedRes), authedRes)
+        findings.push(...jwtResult);
+        logger.debug('JWT Results', { jwtResult });
 
         // Redirect handling:
         // We do not follow redirects. If the target redirects across origins,
