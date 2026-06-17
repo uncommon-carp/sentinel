@@ -175,7 +175,7 @@ export function authSuite(): Suite {
           path: ep.path
         });
 
-        const jwtResult = inspectJwts(extractJwts(authedRes), authedRes)
+        const jwtResult = inspectJwts(extractJwts(authedRes), authedRes);
         findings.push(...jwtResult);
         logger.debug('JWT Results', { jwtResult });
 
