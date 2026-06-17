@@ -167,7 +167,7 @@ export function authSuite(): Suite {
       }
 
       for (const ep of toProbe) {
-        logger.debug('Probing path', { probePath: ep });
+        logger.debug('Probing auth path', { event: 'auth.probe', probePath: ep });
         const url = new URL(ep.path, ctx.config.target.baseUrl).toString();
 
         const authedRes = await ctx.http.request({

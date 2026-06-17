@@ -31,23 +31,26 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
 
   const logger = createLogger({ verbose: config.verbose });
 
-  const http = new HttpClient({
-    baseUrl: config.target.baseUrl,
-    timeoutMs: config.active.timeoutMs,
-    defaultHeaders: {
-      'user-agent': `sentinel/${opts.version}`,
-      accept: 'application/json,*/*'
+  const http = new HttpClient(
+    {
+      baseUrl: config.target.baseUrl,
+      timeoutMs: config.active.timeoutMs,
+      defaultHeaders: {
+        'user-agent': `sentinel/${opts.version}`,
+        accept: 'application/json,*/*'
+      },
+      authHeader: () => {
+        if (config.auth.type === 'bearer' && config.auth.bearerToken) {
+          return { authorization: `Bearer ${config.auth.bearerToken}` };
+        }
+        if (config.auth.type === 'apiKey' && config.auth.apiKeyHeader && config.auth.apiKeyValue) {
+          return { [config.auth.apiKeyHeader]: config.auth.apiKeyValue };
+        }
+        return {};
+      }
     },
-    authHeader: () => {
-      if (config.auth.type === 'bearer' && config.auth.bearerToken) {
-        return { authorization: `Bearer ${config.auth.bearerToken}` };
-      }
-      if (config.auth.type === 'apiKey' && config.auth.apiKeyHeader && config.auth.apiKeyValue) {
-        return { [config.auth.apiKeyHeader]: config.auth.apiKeyValue };
-      }
-      return {};
-    }
-  });
+    logger
+  );
 
   const suites = buildSuites(config.suites);
 
