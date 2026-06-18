@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-06-18
+
 ### Added
 
 - **Verbose mode** (`--verbose`): suite execution flow, HTTP request/response detail, endpoint selection decisions, and per-payload injection probing are now logged via `logger.debug()`. Each debug entry includes a namespaced `event` field for log filtering/aggregation (e.g. `http.request`, `injection.hit`, `ratelimit.burst.throttled`).
@@ -21,7 +23,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Test helper drift**: Removed a local definition of `makeConfig()` from `core.endpoints.test.ts` in favor of an expansion on the `makeConfig()` helper, allowing it
   to accept config overrides.
 
-## 0.3.0 - 2026-06-12
+## [0.3.0] - 2026-06-12
 
 ### Added
 
