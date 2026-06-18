@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+### Added
+
+- **Per-suite error handling**: The runner now catches and surfaces errors within suite runs, instead of early-outing with no indications.
+
 ## [0.3.1] - 2026-06-18
 
 ### Added
