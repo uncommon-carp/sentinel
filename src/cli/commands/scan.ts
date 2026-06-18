@@ -47,7 +47,8 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
           return { [config.auth.apiKeyHeader]: config.auth.apiKeyValue };
         }
         return {};
-      }
+      },
+      authType: config.auth.type
     },
     logger
   );

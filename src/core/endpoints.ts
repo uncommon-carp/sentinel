@@ -12,7 +12,7 @@
 
 import type { SentinelConfig } from '../config/schema.js';
 import type { ApiEndpoint, LoadedApiSpec } from '../openapi/types.js';
-import { Logger } from './logger.js';
+import type { Logger } from './logger.js';
 import type { SelectedEndpoint } from './types.js';
 
 export function resolveEndpoints(endpoints: SelectedEndpoint[] | undefined): SelectedEndpoint[] {

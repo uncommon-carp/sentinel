@@ -17,7 +17,7 @@
  *   side-effect free and deterministic.
  */
 
-import { Logger } from '../core/logger.js';
+import type { Logger } from '../core/logger.js';
 
 export type HttpRequest = {
   method: string;
@@ -39,6 +39,7 @@ export type HttpClientOptions = {
   defaultHeaders?: Record<string, string>;
   timeoutMs: number;
   authHeader?: () => Record<string, string>;
+  authType?: 'none' | 'basic' | 'bearer' | 'apiKey';
 };
 
 function headersToRecord(h: Headers): Record<string, string> {
@@ -68,10 +69,6 @@ export class HttpClient {
         ...(req.headers ?? {})
       };
 
-      const hasAuthHeaders =
-        'authorization' in
-        Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
-
       const init: RequestInit = {
         method: req.method,
         headers,
@@ -83,7 +80,7 @@ export class HttpClient {
         event: 'http.request',
         url,
         method: req.method,
-        hasAuthHeaders
+        hasAuthHeader: this.opts.authType !== undefined && this.opts.authType !== 'none'
       });
       const res = await fetch(url, init);
 
