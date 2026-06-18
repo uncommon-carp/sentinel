@@ -13,6 +13,11 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
   - Injection suite logs a truncated response snippet (200 chars) on confirmed hits only, never on payload misses
   - New test coverage for `core/logger.ts` (verbose gating, structured data serialization)
 
+### Fixed
+
+- **Test helper drift**: Removed a local definition of `makeConfig()` from `core.endpoints.test.ts` in favor of an expansion on the `makeConfig()` helper, allowing it
+  to accept config overrides.
+
 ## 0.3.0 - 2026-06-12
 
 ### Added
