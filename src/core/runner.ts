@@ -43,7 +43,10 @@ export async function runScan(args: {
 
   // Execute suites sequentially to preserve determinism and limit request bursts.
   for (const suite of args.suites) {
-    logger.info(`Running suite: ${suite.name}`);
+    logger.debug(`Running suite: ${suite.name}`, {
+      event: 'sentinel.suite.run',
+      suite: suite.name
+    });
     const suiteFindings = await suite.run(args.ctx);
     findings.push(...suiteFindings);
   }
@@ -77,7 +80,7 @@ export async function runScan(args: {
     const ext = reporter.name === 'markdown' ? 'md' : reporter.name;
     const outPath = path.join(args.outputDir, `sentinel-report.${ext}`);
     fs.writeFileSync(outPath, rendered, 'utf-8');
-    logger.info(`Wrote report: ${outPath}`);
+    logger.debug(`Wrote report`, { event: 'sentinel.report.written', outPath });
   }
 
   return result;

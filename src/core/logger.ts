@@ -1,6 +1,9 @@
 export type DebugEvent =
+  | 'sentinel.openapi.loaded'
   | 'sentinel.scan.start'
   | 'sentinel.scan.complete'
+  | 'sentinel.suite.run'
+  | 'sentinel.report.written'
   | 'endpoints.select.fallback'
   | 'endpoints.select'
   | 'endpoints.select.empty'

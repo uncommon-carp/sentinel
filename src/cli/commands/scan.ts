@@ -65,7 +65,11 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   const api = config.target.openapi ? await loadOpenApi(config.target.openapi) : undefined;
 
   if (api) {
-    logger.info('Loaded OpenAPI spec', { source: api.source, endpoints: api.endpoints.length });
+    logger.debug('Loaded OpenAPI spec', {
+      event: 'sentinel.openapi.loaded',
+      source: api.source,
+      endpoints: api.endpoints.length
+    });
   }
 
   const selectedEndpoints = selectEndpoints({ config, logger, ...(api ? { api } : {}) });
