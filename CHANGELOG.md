@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## 0.3.0 - 2026-06-12
+
 ### Added
 
 - **Injection suite** (`src/suites/injection.ts`): probes OpenAPI-defined query and body parameters for SQL error disclosure, NoSQL error disclosure, template injection (expression evaluation), and command injection signals. Requires an OpenAPI spec; skips with a logged message if none is provided. Maps to OWASP API1/API8.
