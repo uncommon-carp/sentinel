@@ -2,12 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { selectEndpoints } from '../src/core/endpoints.js';
 import type { SentinelConfig } from '../src/config/schema.js';
 import type { LoadedApiSpec } from '../src/openapi/types.js';
+import { createLogger } from '../src/core/logger.js';
 
 function makeConfig(): SentinelConfig {
   return {
     target: { baseUrl: 'https://api.example.com' },
     auth: { type: 'none', probePaths: ['/'], compareUnauthed: false },
-    suites: { headers: true, cors: true, auth: true, ratelimit: true, inventory: true },
+    suites: {
+      headers: true,
+      cors: true,
+      auth: true,
+      ratelimit: true,
+      inventory: true,
+      injection: true
+    },
     active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
     output: { dir: './sentinel-out', json: true, markdown: true },
     verbose: false,
@@ -19,6 +27,14 @@ function makeConfig(): SentinelConfig {
       excludePaths: [],
       prefer: ['^/health', '^/me'],
       seed: 0
+    },
+    ratelimit: {
+      burstCount: 10,
+      delayMs: 75
+    },
+    injection: {
+      categories: ['sql', 'template'],
+      paramTypes: ['query', 'body']
     }
   };
 }
@@ -38,18 +54,20 @@ function makeApi(): LoadedApiSpec {
 }
 
 describe('selectEndpoints', () => {
+  const logger = createLogger({ verbose: false });
+
   it('falls back to GET / when scope disabled or api missing', () => {
     const config = makeConfig();
     config.scope.enabled = false;
 
-    expect(selectEndpoints({ config })).toEqual([{ method: 'get', path: '/' }]);
+    expect(selectEndpoints({ config, logger })).toEqual([{ method: 'get', path: '/' }]);
   });
 
   it('filters methods, applies prefer ordering, and caps', () => {
     const config = makeConfig();
     const api = makeApi();
 
-    const selected = selectEndpoints({ config, api });
+    const selected = selectEndpoints({ config, logger, api });
     const keys = selected.map((e) => `${e.method} ${e.path}`);
 
     expect(keys).toEqual(expect.arrayContaining(['head /health', 'get /me']));
@@ -71,7 +89,7 @@ describe('selectEndpoints', () => {
     config.scope.excludePaths = ['\\{id\\}']; // exclude param path
 
     const api = makeApi();
-    const selected = selectEndpoints({ config, api });
+    const selected = selectEndpoints({ config, logger, api });
 
     // includePaths narrows to /users..., then exclude removes /users/{id} leaving fallback
     // Because selection becomes empty after filters, we guarantee GET /
