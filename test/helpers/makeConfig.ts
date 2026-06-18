@@ -5,7 +5,8 @@ import type { SuiteContext } from '../../src/core/types';
 
 export function makeConfig(
   baseUrl: string,
-  authType: 'none' | 'basic' | 'bearer' | 'apiKey' = 'none'
+  authType: 'none' | 'basic' | 'bearer' | 'apiKey' = 'none',
+  overrides?: Partial<SentinelConfig>
 ): SentinelConfig {
   return {
     target: { baseUrl },
@@ -36,7 +37,8 @@ export function makeConfig(
     },
     active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
     output: { dir: './sentinel-out', json: true, markdown: true },
-    verbose: false
+    verbose: false,
+    ...overrides
   };
 }
 

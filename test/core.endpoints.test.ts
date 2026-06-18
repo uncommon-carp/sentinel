@@ -1,43 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { selectEndpoints } from '../src/core/endpoints.js';
-import type { SentinelConfig } from '../src/config/schema.js';
 import type { LoadedApiSpec } from '../src/openapi/types.js';
 import { createLogger } from '../src/core/logger.js';
-
-function makeConfig(): SentinelConfig {
-  return {
-    target: { baseUrl: 'https://api.example.com' },
-    auth: { type: 'none', probePaths: ['/'], compareUnauthed: false },
-    suites: {
-      headers: true,
-      cors: true,
-      auth: true,
-      ratelimit: true,
-      inventory: true,
-      injection: true
-    },
-    active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
-    output: { dir: './sentinel-out', json: true, markdown: true },
-    verbose: false,
-    scope: {
-      enabled: true,
-      methods: ['get', 'head'],
-      maxEndpoints: 3,
-      includePaths: [],
-      excludePaths: [],
-      prefer: ['^/health', '^/me'],
-      seed: 0
-    },
-    ratelimit: {
-      burstCount: 10,
-      delayMs: 75
-    },
-    injection: {
-      categories: ['sql', 'template'],
-      paramTypes: ['query', 'body']
-    }
-  };
-}
+import { makeConfig } from './helpers/makeConfig.js';
 
 function makeApi(): LoadedApiSpec {
   return {
@@ -57,14 +22,23 @@ describe('selectEndpoints', () => {
   const logger = createLogger({ verbose: false });
 
   it('falls back to GET / when scope disabled or api missing', () => {
-    const config = makeConfig();
-    config.scope.enabled = false;
+    const config = makeConfig('https://api.example.com', 'none');
 
     expect(selectEndpoints({ config, logger })).toEqual([{ method: 'get', path: '/' }]);
   });
 
   it('filters methods, applies prefer ordering, and caps', () => {
-    const config = makeConfig();
+    const config = makeConfig('https://api.example.com', 'none', {
+      scope: {
+        enabled: true,
+        methods: ['get', 'head'],
+        maxEndpoints: 3,
+        includePaths: [],
+        excludePaths: [],
+        prefer: ['^/health', '^/me'],
+        seed: 0
+      }
+    });
     const api = makeApi();
 
     const selected = selectEndpoints({ config, logger, api });
@@ -84,9 +58,17 @@ describe('selectEndpoints', () => {
   });
 
   it('supports include/exclude regex filters', () => {
-    const config = makeConfig();
-    config.scope.includePaths = ['^/users'];
-    config.scope.excludePaths = ['\\{id\\}']; // exclude param path
+    const config = makeConfig('https://api.example.com', 'none', {
+      scope: {
+        enabled: true,
+        methods: ['get', 'head'],
+        maxEndpoints: 3,
+        includePaths: ['^/users'],
+        excludePaths: ['\\{id\\}'], //exclude param path
+        prefer: ['^/health', '^/me'],
+        seed: 0
+      }
+    });
 
     const api = makeApi();
     const selected = selectEndpoints({ config, logger, api });
