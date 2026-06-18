@@ -235,13 +235,11 @@ CLI
 
 ## Exit Codes
 
-| Code | Meaning                            |
-| ---- | ---------------------------------- |
-| `0`  | No high or critical findings       |
-| `2`  | One or more high/critical findings |
-| `1`  | Execution or configuration error   |
-
-This makes Sentinel easy to integrate into CI pipelines.
+| Code | Meaning                                                   |
+| ---- | --------------------------------------------------------- |
+| 0    | Scan completed, no high or critical findings              |
+| 1    | Scan ran but one or more suites failed; report is partial |
+| 2    | Scan completed, high or critical findings present         |
 
 ---
 

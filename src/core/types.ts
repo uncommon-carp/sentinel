@@ -37,6 +37,7 @@ export type RunResult = {
   meta: RunMeta;
   config: Record<string, unknown>;
   findings: Finding[];
+  suiteErrors: SuiteError[];
 };
 
 export type SuiteContext = {
@@ -45,6 +46,12 @@ export type SuiteContext = {
   logger: import('./logger.js').Logger;
   api?: import('../openapi/types.js').LoadedApiSpec;
   selectedEndpoints?: SelectedEndpoint[];
+};
+
+export type SuiteError = {
+  suite: string;
+  message: string;
+  stack?: string;
 };
 
 export type Suite = {

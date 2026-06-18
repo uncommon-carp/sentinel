@@ -37,7 +37,9 @@ export async function runScan(args: {
 }): Promise<RunResult> {
   const { logger } = args.ctx;
   const started = Date.now();
+
   const findings: RunResult['findings'] = [];
+  const suiteErrors: RunResult['suiteErrors'] = [];
 
   logger.debug('Scan started', { event: 'sentinel.scan.start', suiteCount: args.suites.length });
 
@@ -47,8 +49,19 @@ export async function runScan(args: {
       event: 'sentinel.suite.run',
       suite: suite.name
     });
-    const suiteFindings = await suite.run(args.ctx);
-    findings.push(...suiteFindings);
+    try {
+      const suiteFindings = await suite.run(args.ctx);
+      findings.push(...suiteFindings);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
+      logger.error(`Suite '${suite.name}' failed: ${message}`, {
+        event: 'sentinel.suite.error',
+        suite: suite.name,
+        ...(stack ? { stack } : {})
+      });
+      suiteErrors.push({ suite: suite.name, message, ...(stack ? { stack } : {}) });
+    }
   }
 
   const finished = Date.now();
@@ -68,7 +81,8 @@ export async function runScan(args: {
       durationMs: finished - started
     },
     config: args.sanitizedConfig,
-    findings
+    findings,
+    suiteErrors
   };
 
   // Ensure output directory exists before writing any reports.
