@@ -80,7 +80,10 @@ export class HttpClient {
         event: 'http.request',
         url,
         method: req.method,
-        hasAuthHeader: this.opts.authType !== undefined && this.opts.authType !== 'none'
+        hasAuthHeader:
+          this.opts.authType !== undefined &&
+          this.opts.authType !== 'none' &&
+          Object.keys(this.opts.authHeader?.() ?? {}).length > 0
       });
       const res = await fetch(url, init);
 
