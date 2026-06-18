@@ -12,6 +12,7 @@
 
 import type { SentinelConfig } from '../config/schema.js';
 import type { ApiEndpoint, LoadedApiSpec } from '../openapi/types.js';
+import { Logger } from './logger.js';
 import type { SelectedEndpoint } from './types.js';
 
 export function resolveEndpoints(endpoints: SelectedEndpoint[] | undefined): SelectedEndpoint[] {
@@ -55,11 +56,16 @@ function normalizeEndpoints(endpoints: ApiEndpoint[], basePath: string): ApiEndp
 
 export function selectEndpoints(args: {
   config: SentinelConfig;
+  logger: Logger;
   api?: LoadedApiSpec;
 }): SelectedEndpoint[] {
-  const { config, api } = args;
+  const { config, logger, api } = args;
 
   if (!config.scope.enabled || !api?.endpoints?.length) {
+    logger.debug('No spec present, defaulting', {
+      event: 'endpoints.select.fallback',
+      reason: !config.scope.enabled ? 'scope_disabled' : 'no_api_endpoints'
+    });
     return [{ method: 'get', path: '/' }];
   }
 
@@ -96,7 +102,21 @@ export function selectEndpoints(args: {
   const cap = Math.max(1, config.scope.maxEndpoints);
   const selected = filtered.slice(0, cap);
 
-  if (selected.length === 0) return [{ method: 'get', path: '/' }];
+  logger.debug('Selected endpoints from spec', {
+    event: 'endpoints.select',
+    totalAvailable: all.length,
+    selectedCount: selected.length,
+    selected: selected.map((e) => `${e.method.toUpperCase()} ${e.path}`)
+  });
+
+  if (selected.length === 0) {
+    logger.debug('Scope filters excluded all endpoints, falling back to GET /', {
+      event: 'endpoints.select.empty',
+      totalAvailable: all.length,
+      afterFiltering: filtered.length
+    });
+    return [{ method: 'get', path: '/' }];
+  }
 
   return selected;
 }

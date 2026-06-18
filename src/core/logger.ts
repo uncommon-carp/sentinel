@@ -1,6 +1,9 @@
 export type DebugEvent =
   | 'sentinel.scan_start'
   | 'sentinel.scan_complete'
+  | 'endpoints.select.fallback'
+  | 'endpoints.select'
+  | 'endpoints.select.empty'
   | 'http.request'
   | 'http.response'
   | 'cors.probe'
