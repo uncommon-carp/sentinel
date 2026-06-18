@@ -46,7 +46,12 @@ export function markdownReporter(): Reporter {
         acc[f.severity] = (acc[f.severity] ?? 0) + 1;
         return acc;
       }, {});
-
+      if (result.suiteErrors.length > 0) {
+        lines.push(
+          `> ⚠️ **Incomplete scan** — ${result.suiteErrors.length} suite(s) failed to run; findings below are partial.`
+        );
+        lines.push('');
+      }
       lines.push('## Summary');
       lines.push('');
       lines.push('| Severity | Count |');
@@ -73,6 +78,16 @@ export function markdownReporter(): Reporter {
         lines.push('| --- | --- |');
         for (const [category, count] of sorted) {
           lines.push(`| ${category} | ${count} |`);
+        }
+        lines.push('');
+      }
+      if (result.suiteErrors.length > 0) {
+        lines.push('## Suite Errors');
+        lines.push('');
+        lines.push('| Suite | Error |');
+        lines.push('| --- | --- |');
+        for (const e of result.suiteErrors) {
+          lines.push(`| ${e.suite} | ${e.message.replace(/\|/g, '\\|')} |`);
         }
         lines.push('');
       }

@@ -95,5 +95,6 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   });
 
   const hasHigh = result.findings.some((f) => f.severity === 'high' || f.severity === 'critical');
-  return { exitCode: hasHigh ? 2 : 0, outputDir };
+  const incomplete = result.suiteErrors.length > 0;
+  return { exitCode: hasHigh ? 2 : incomplete ? 1 : 0, outputDir };
 }
