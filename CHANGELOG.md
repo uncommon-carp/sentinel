@@ -15,6 +15,9 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ### Fixed
 
+- **Missing basic auth wiring**: `basic` is a configurable option but was not wired to anything in the scanner. It's now a fully operational option, with added tests
+  for authHeader construction.
+
 - **Test helper drift**: Removed a local definition of `makeConfig()` from `core.endpoints.test.ts` in favor of an expansion on the `makeConfig()` helper, allowing it
   to accept config overrides.
 

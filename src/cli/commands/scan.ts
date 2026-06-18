@@ -7,6 +7,7 @@ import { markdownReporter } from '../../reporters/markdown.js';
 import { runScan } from '../../core/runner.js';
 import { loadOpenApi } from '../../openapi/load.js';
 import { selectEndpoints } from '../../core/endpoints.js';
+import type { SentinelConfig } from '../../config/schema.js';
 
 export type ScanCommandOptions = {
   version: string;
@@ -16,6 +17,20 @@ export type ScanCommandOptions = {
   out?: string;
   verbose?: boolean;
 };
+
+export function buildAuthHeader(auth: SentinelConfig['auth']): Record<string, string> {
+  if (auth.type === 'bearer' && auth.bearerToken) {
+    return { authorization: `Bearer ${auth.bearerToken}` };
+  }
+  if (auth.type === 'apiKey' && auth.apiKeyHeader && auth.apiKeyValue) {
+    return { [auth.apiKeyHeader]: auth.apiKeyValue };
+  }
+  if (auth.type === 'basic' && auth.basicUser && auth.basicPass) {
+    const encoded = Buffer.from(`${auth.basicUser}:${auth.basicPass}`).toString('base64');
+    return { authorization: `Basic ${encoded}` };
+  }
+  return {};
+}
 
 // Separated for testability; CLI can decide process.exit policy.
 export async function scanCommand(opts: ScanCommandOptions): Promise<{
@@ -39,15 +54,7 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
         'user-agent': `sentinel/${opts.version}`,
         accept: 'application/json,*/*'
       },
-      authHeader: () => {
-        if (config.auth.type === 'bearer' && config.auth.bearerToken) {
-          return { authorization: `Bearer ${config.auth.bearerToken}` };
-        }
-        if (config.auth.type === 'apiKey' && config.auth.apiKeyHeader && config.auth.apiKeyValue) {
-          return { [config.auth.apiKeyHeader]: config.auth.apiKeyValue };
-        }
-        return {};
-      },
+      authHeader: () => buildAuthHeader(config.auth),
       authType: config.auth.type
     },
     logger

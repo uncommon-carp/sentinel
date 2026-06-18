@@ -161,7 +161,9 @@ export function authSuite(): Suite {
 
       const authConfigured = ctx.config.auth.type !== 'none';
       const overrideHeaders: Record<string, string> = {};
-      if (ctx.config.auth.type === 'bearer') overrideHeaders['authorization'] = '';
+      if (ctx.config.auth.type === 'bearer' || ctx.config.auth.type === 'basic') {
+        overrideHeaders['authorization'] = '';
+      }
       if (ctx.config.auth.type === 'apiKey' && ctx.config.auth.apiKeyHeader) {
         overrideHeaders[ctx.config.auth.apiKeyHeader] = '';
       }

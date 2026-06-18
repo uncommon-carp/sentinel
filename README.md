@@ -32,7 +32,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 
 | #          | Category                                        | Current Coverage                                                                                                                                                                                  |
 | ---------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API1:2023  | Broken Object Level Authorization               | **Injection suite**: SQL/NoSQL/template error-string detection across OpenAPI-defined parameters —                                                                                                |
+| API1:2023  | Broken Object Level Authorization               | **Injection suite**: SQL/NoSQL/template error-string detection across OpenAPI-defined parameters                                                                                                  |
 | API2:2023  | Broken Authentication                           | **Auth suite**: 401 semantics, auth bypass heuristic, cross-origin redirect risk, JWT inspection (alg:none, missing exp, expired issuance, excessive TTL); **CORS suite**: wildcard + credentials |
 | API3:2023  | Broken Object Property Level Authorization      | —                                                                                                                                                                                                 |
 | API4:2023  | Unrestricted Resource Consumption               | **Rate limit suite**: header inspection, sequential burst probe, missing Retry-After detection                                                                                                    |
@@ -144,6 +144,10 @@ Example:
     "excludePaths": ["^/admin", "^/internal"],
     "prefer": ["^/health", "^/status", "^/me"]
   },
+  "injection": {
+    "categories": ["sql", "template"],
+    "paramTypes": ["query", "body"]
+  },
   "output": {
     "dir": "./sentinel-out",
     "json": true,
@@ -162,14 +166,14 @@ Example:
 
 | Option            | Description                                                                           |
 | ----------------- | ------------------------------------------------------------------------------------- |
-| `type`            | Auth scheme: `none`, `bearer`, `apiKey` (default: `none`)                             |
+| `type`            | Auth scheme: `none`, `bearer`, `basic`, `apiKey` (default: `none`)                    |
 | `bearerToken`     | Token value for `bearer` auth                                                         |
+| `basicUser`       | Username for `basic` auth                                                             |
+| `basicPass`       | Password for `basic` auth                                                             |
 | `apiKeyHeader`    | Header name for `apiKey` auth (e.g. `x-api-key`)                                      |
 | `apiKeyValue`     | Header value for `apiKey` auth                                                        |
 | `probePaths`      | Endpoints used by the auth suite for probing (default: `["/"]`)                       |
 | `compareUnauthed` | Compare authed vs. unauthed responses to detect missing enforcement (default: `true`) |
-
-> **Note:** `basic` auth (`basicUser` / `basicPass`) is accepted by the config schema but header injection is not yet implemented.
 
 ### Scope
 
@@ -188,7 +192,18 @@ When scope is disabled or no OpenAPI spec is provided, suites fall back to probi
 
 ### Suites
 
-## The `suites` block enables or disables individual test suites. All five implemented suites (`headers`, `cors`, `auth`, `ratelimit`, `inventory`) are enabled by default. The `suites` block enables or disables individual test suites. All five implemented suites (`headers`, `cors`, `auth`, `ratelimit`, `inventory`) are enabled by default. The `injection` key is accepted by the config parser but is a no-op pending suite implementation
+The `suites` block enables or disables individual test suites. All six implemented suites (`headers`, `cors`, `auth`, `ratelimit`, `inventory`, `injection`) are enabled by default, except `injection`, which defaults to `false` and requires `--openapi` or `target.openapi` to run. When enabled, it uses the `injection` config block below.
+
+### Injection
+
+Requires an OpenAPI spec. When enabled, probes parameters extracted from the spec.
+
+| Option       | Description                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------------- |
+| `categories` | Payload categories to use: `sql`, `nosql`, `template`, `command` (default: `["sql", "template"]`) |
+| `paramTypes` | Parameter locations to probe: `query`, `body` (default: `["query", "body"]`)                      |
+
+> **Note:** `command` injection probing must be explicitly added to `categories` — it is not enabled by default. All injection checks are output-based only; no time-based payloads are used.
 
 ## Architecture Overview
 
@@ -202,23 +217,12 @@ CLI
          │    ├─ cors
          │    ├─ auth
          │    ├─ ratelimit
-         │    └─ inventory
-         │    ├─ injection
+         │    ├─ inventory
+         │    └─ injection
          └─ reporters
               ├─ JSON
               └─ Markdown
 ```
-
-### Injection
-
-Requires an OpenAPI spec. When enabled, probes parameters extracted from the spec.
-
-| Option       | Description                                                                                       |
-| ------------ | ------------------------------------------------------------------------------------------------- |
-| `categories` | Payload categories to use: `sql`, `nosql`, `template`, `command` (default: `["sql", "template"]`) |
-| `paramTypes` | Parameter locations to probe: `query`, `body` (default: `["query", "body"]`)                      |
-
-> **Note:** `command` injection probing must be explicitly added to `categories`, it is not enabled by default. All injection checks are output-based only; no time-based payloads are used.
 
 ### Key Concepts
 
