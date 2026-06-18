@@ -44,10 +44,14 @@ export function makeSuiteCtx(
   baseUrl: string = 'https://api.example.com',
   authType: 'none' | 'basic' | 'bearer' | 'apiKey' = 'none'
 ): SuiteContext {
+  const logger = createLogger({ verbose: false });
   const config = makeConfig(baseUrl, authType);
-  const http = new HttpClient({
-    baseUrl: config.target.baseUrl,
-    timeoutMs: config.active.timeoutMs
-  });
-  return { http, config, logger: createLogger({ verbose: false }) };
+  const http = new HttpClient(
+    {
+      baseUrl: config.target.baseUrl,
+      timeoutMs: config.active.timeoutMs
+    },
+    logger
+  );
+  return { http, config, logger };
 }

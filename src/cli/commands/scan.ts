@@ -31,23 +31,27 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
 
   const logger = createLogger({ verbose: config.verbose });
 
-  const http = new HttpClient({
-    baseUrl: config.target.baseUrl,
-    timeoutMs: config.active.timeoutMs,
-    defaultHeaders: {
-      'user-agent': `sentinel/${opts.version}`,
-      accept: 'application/json,*/*'
+  const http = new HttpClient(
+    {
+      baseUrl: config.target.baseUrl,
+      timeoutMs: config.active.timeoutMs,
+      defaultHeaders: {
+        'user-agent': `sentinel/${opts.version}`,
+        accept: 'application/json,*/*'
+      },
+      authHeader: () => {
+        if (config.auth.type === 'bearer' && config.auth.bearerToken) {
+          return { authorization: `Bearer ${config.auth.bearerToken}` };
+        }
+        if (config.auth.type === 'apiKey' && config.auth.apiKeyHeader && config.auth.apiKeyValue) {
+          return { [config.auth.apiKeyHeader]: config.auth.apiKeyValue };
+        }
+        return {};
+      },
+      authType: config.auth.type
     },
-    authHeader: () => {
-      if (config.auth.type === 'bearer' && config.auth.bearerToken) {
-        return { authorization: `Bearer ${config.auth.bearerToken}` };
-      }
-      if (config.auth.type === 'apiKey' && config.auth.apiKeyHeader && config.auth.apiKeyValue) {
-        return { [config.auth.apiKeyHeader]: config.auth.apiKeyValue };
-      }
-      return {};
-    }
-  });
+    logger
+  );
 
   const suites = buildSuites(config.suites);
 
@@ -61,10 +65,14 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   const api = config.target.openapi ? await loadOpenApi(config.target.openapi) : undefined;
 
   if (api) {
-    logger.info('Loaded OpenAPI spec', { source: api.source, endpoints: api.endpoints.length });
+    logger.debug('Loaded OpenAPI spec', {
+      event: 'sentinel.openapi.loaded',
+      source: api.source,
+      endpoints: api.endpoints.length
+    });
   }
 
-  const selectedEndpoints = selectEndpoints({ config, ...(api ? { api } : {}) });
+  const selectedEndpoints = selectEndpoints({ config, logger, ...(api ? { api } : {}) });
 
   const result = await runScan({
     suites,

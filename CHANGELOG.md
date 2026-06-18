@@ -6,6 +6,13 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+### Added
+
+- **Verbose mode** (`--verbose`): suite execution flow, HTTP request/response detail, endpoint selection decisions, and per-payload injection probing are now logged via `logger.debug()`. Each debug entry includes a namespaced `event` field for log filtering/aggregation (e.g. `http.request`, `injection.hit`, `ratelimit.burst.throttled`).
+  - Non-verbose output reduced to scan lifecycle signal only — suite start/finish narration and report output paths moved from `info` to `debug`
+  - Injection suite logs a truncated response snippet (200 chars) on confirmed hits only, never on payload misses
+  - New test coverage for `core/logger.ts` (verbose gating, structured data serialization)
+
 ## 0.3.0 - 2026-06-12
 
 ### Added

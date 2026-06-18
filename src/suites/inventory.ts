@@ -60,12 +60,14 @@ export function inventorySuite(): Suite {
     description:
       'Probes common API paths for sensitive endpoint exposure and stale version endpoints.',
     async run(ctx): Promise<Finding[]> {
+      const { logger } = ctx;
       const findings: Finding[] = [];
       const cap = ctx.config.active.maxRequestsPerSuite;
       const toProbe = ALL_PROBE_PATHS.slice(0, cap);
 
       const results: Record<string, ProbedPath> = {};
       for (const probePath of toProbe) {
+        logger.debug('Inventory probe', { event: 'inventory.probe', endpoint: probePath });
         const res = await ctx.http.request({ method: 'GET', path: probePath });
         results[probePath] = { path: probePath, status: res.status, url: res.url };
       }

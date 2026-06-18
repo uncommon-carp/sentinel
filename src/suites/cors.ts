@@ -16,6 +16,7 @@ export function corsSuite(): Suite {
     name: 'cors',
     description: 'Performs basic CORS misconfiguration checks on the base endpoint.',
     async run(ctx): Promise<Finding[]> {
+      const { logger } = ctx;
       const findings: Finding[] = [];
       const origin = 'https://sentinel.invalid';
 
@@ -23,6 +24,7 @@ export function corsSuite(): Suite {
       const toProbe = resolveEndpoints(ctx.selectedEndpoints).slice(0, cap);
 
       for (const ep of toProbe) {
+        logger.debug('Probing CORS endpoint', { event: 'cors.probe', probePath: ep });
         const res = await ctx.http.request({
           method: 'GET',
           path: ep.path,

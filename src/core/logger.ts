@@ -1,8 +1,32 @@
+export type DebugEvent =
+  | 'sentinel.openapi.loaded'
+  | 'sentinel.scan.start'
+  | 'sentinel.scan.complete'
+  | 'sentinel.suite.run'
+  | 'sentinel.report.written'
+  | 'endpoints.select.fallback'
+  | 'endpoints.select'
+  | 'endpoints.select.empty'
+  | 'http.request'
+  | 'http.response'
+  | 'cors.probe'
+  | 'auth.probe'
+  | 'auth.jwt.inspected'
+  | 'ratelimit.probe'
+  | 'ratelimit.burst.start'
+  | 'ratelimit.burst.request'
+  | 'ratelimit.burst.throttled'
+  | 'injection.probe'
+  | 'injection.hit'
+  | 'injection.payload.sent'
+  | 'inventory.probe'
+  | 'headers.check';
+
 export type Logger = {
   info(msg: string, data?: Record<string, unknown>): void;
   warn(msg: string, data?: Record<string, unknown>): void;
   error(msg: string, data?: Record<string, unknown>): void;
-  debug(msg: string, data?: Record<string, unknown>): void;
+  debug(msg: string, data?: { event: DebugEvent } & Record<string, unknown>): void;
 };
 
 export function createLogger(opts: { verbose: boolean }): Logger {

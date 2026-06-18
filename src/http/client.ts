@@ -17,6 +17,8 @@
  *   side-effect free and deterministic.
  */
 
+import type { Logger } from '../core/logger.js';
+
 export type HttpRequest = {
   method: string;
   path?: string;
@@ -37,6 +39,7 @@ export type HttpClientOptions = {
   defaultHeaders?: Record<string, string>;
   timeoutMs: number;
   authHeader?: () => Record<string, string>;
+  authType?: 'none' | 'basic' | 'bearer' | 'apiKey';
 };
 
 function headersToRecord(h: Headers): Record<string, string> {
@@ -48,13 +51,16 @@ function headersToRecord(h: Headers): Record<string, string> {
 }
 
 export class HttpClient {
-  constructor(private opts: HttpClientOptions) {}
+  constructor(
+    private opts: HttpClientOptions,
+    private logger: Logger
+  ) {}
 
   async request(req: HttpRequest): Promise<HttpResponse> {
     const url = req.url ?? new URL(req.path ?? '/', this.opts.baseUrl).toString();
-
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), this.opts.timeoutMs);
+    const startedAt = Date.now();
 
     try {
       const headers: Record<string, string> = {
@@ -70,9 +76,23 @@ export class HttpClient {
         ...(req.body !== undefined ? { body: req.body } : {})
       };
 
+      this.logger.debug('Sending HTTP request', {
+        event: 'http.request',
+        url,
+        method: req.method,
+        hasAuthHeader:
+          this.opts.authType !== undefined &&
+          this.opts.authType !== 'none' &&
+          Object.keys(this.opts.authHeader?.() ?? {}).length > 0
+      });
       const res = await fetch(url, init);
 
       const bodyText = await res.text();
+      this.logger.debug('Receiving HTTP response', {
+        event: 'http.response',
+        status: res.status,
+        duration: Date.now() - startedAt
+      });
       return {
         status: res.status,
         headers: headersToRecord(res.headers),

@@ -68,6 +68,7 @@ export function headersSuite(): Suite {
     name: 'headers',
     description: 'Checks for baseline HTTP security headers across selected endpoints.',
     async run(ctx): Promise<Finding[]> {
+      const { logger } = ctx;
       const findings: Finding[] = [];
 
       const cap = ctx.config.active.maxRequestsPerSuite;
@@ -76,6 +77,7 @@ export function headersSuite(): Suite {
       const missingMap = new Map<string, AffectedEndpoint[]>();
 
       for (const ep of toProbe) {
+        logger.debug('Headers probe', { event: 'headers.check', endpoint: ep });
         const res = await ctx.http.request({ method: 'GET', path: ep.path });
 
         for (const rule of REQUIRED_HEADERS) {
