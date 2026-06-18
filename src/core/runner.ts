@@ -39,17 +39,23 @@ export async function runScan(args: {
   const started = Date.now();
   const findings: RunResult['findings'] = [];
 
-  logger.debug('Scan started', { suiteCount: args.suites.length });
+  logger.debug('Scan started', { event: 'sentinel.scan_start', suiteCount: args.suites.length });
 
   // Execute suites sequentially to preserve determinism and limit request bursts.
   for (const suite of args.suites) {
     logger.info(`Running suite: ${suite.name}`);
     const suiteFindings = await suite.run(args.ctx);
     findings.push(...suiteFindings);
-    logger.debug('Scan completed', { findingsCount: suiteFindings.length });
   }
 
   const finished = Date.now();
+  const duration = finished - started;
+
+  logger.debug('Scan completed', {
+    event: 'sentinel.scan_complete',
+    findingsCount: findings.length,
+    duration
+  });
 
   // Aggregate final scan metadata and all findings into a single result object.
   const result: RunResult = {

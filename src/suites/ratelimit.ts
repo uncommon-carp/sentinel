@@ -40,6 +40,7 @@ export function rateLimitSuite(): Suite {
     description:
       'Checks for HTTP rate limiting via header inspection and a sequential burst probe.',
     async run(ctx): Promise<Finding[]> {
+      const { logger } = ctx;
       const findings: Finding[] = [];
       const cap = ctx.config.active.maxRequestsPerSuite;
 
@@ -48,6 +49,7 @@ export function rateLimitSuite(): Suite {
       let anyHeadersFound = false;
 
       for (const ep of toProbe) {
+        logger.debug('Rate limiting probing', { event: 'ratelimit.probe', endpoint: ep });
         const res = await ctx.http.request({ method: 'GET', path: ep.path });
         if (hasRateLimitHeaders(res.headers)) {
           anyHeadersFound = true;
@@ -85,6 +87,13 @@ export function rateLimitSuite(): Suite {
       const burstCount = Math.min(ctx.config.ratelimit.burstCount, cap);
       const delayMs = ctx.config.ratelimit.delayMs;
 
+      logger.debug('Starting burst probe', {
+        event: 'ratelimit.burst.start',
+        probePath,
+        burstCount,
+        delayMs
+      });
+
       type BurstResponse = { status: number; headers: Record<string, string>; url: string };
       const burst: BurstResponse[] = [];
 
@@ -92,7 +101,19 @@ export function rateLimitSuite(): Suite {
         if (i > 0) await sleep(delayMs);
         const res = await ctx.http.request({ method: 'GET', path: probePath });
         burst.push({ status: res.status, headers: res.headers, url: res.url });
-        if (res.status === 429) break;
+        logger.debug('Burst request completed', {
+          event: 'ratelimit.burst.request',
+          index: i + 1,
+          of: burstCount,
+          status: res.status
+        });
+        if (res.status === 429) {
+          logger.debug('Burst probe throttled', {
+            event: 'ratelimit.burst.throttled',
+            requestsBeforeThrottle: i + 1
+          });
+          break;
+        }
       }
 
       const throttled = burst.find((r) => r.status === 429);
