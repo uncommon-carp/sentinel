@@ -39,7 +39,7 @@ export async function runScan(args: {
   const started = Date.now();
   const findings: RunResult['findings'] = [];
 
-  logger.debug('Scan started', { event: 'sentinel.scan_start', suiteCount: args.suites.length });
+  logger.debug('Scan started', { event: 'sentinel.scan.start', suiteCount: args.suites.length });
 
   // Execute suites sequentially to preserve determinism and limit request bursts.
   for (const suite of args.suites) {
@@ -52,7 +52,7 @@ export async function runScan(args: {
   const duration = finished - started;
 
   logger.debug('Scan completed', {
-    event: 'sentinel.scan_complete',
+    event: 'sentinel.scan.complete',
     findingsCount: findings.length,
     duration
   });

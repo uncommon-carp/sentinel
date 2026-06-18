@@ -1,6 +1,6 @@
 export type DebugEvent =
-  | 'sentinel.scan_start'
-  | 'sentinel.scan_complete'
+  | 'sentinel.scan.start'
+  | 'sentinel.scan.complete'
   | 'endpoints.select.fallback'
   | 'endpoints.select'
   | 'endpoints.select.empty'
@@ -8,12 +8,14 @@ export type DebugEvent =
   | 'http.response'
   | 'cors.probe'
   | 'auth.probe'
-  | 'auth.jwt_inspected'
+  | 'auth.jwt.inspected'
   | 'ratelimit.probe'
   | 'ratelimit.burst.start'
   | 'ratelimit.burst.request'
   | 'ratelimit.burst.throttled'
   | 'injection.probe'
+  | 'injection.hit'
+  | 'injection.payload.sent'
   | 'inventory.probe'
   | 'headers.check';
 

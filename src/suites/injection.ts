@@ -20,6 +20,7 @@
  */
 
 import type { Suite, Finding } from '../core/types.js';
+import type { Logger } from '../core/logger.js';
 import { resolveEndpoints } from '../core/endpoints.js';
 
 type Category = 'sql' | 'nosql' | 'template' | 'command';
@@ -33,6 +34,11 @@ const PAYLOADS: Record<Category, string[]> = {
 
 const SQL_ERROR_PATTERNS = ['sql syntax', 'ora-', 'pg_query', 'mysql_fetch', 'sqlite', 'sqlstate'];
 const NOSQL_ERROR_PATTERNS = ['mongo', '$where', 'bson'];
+
+// Truncation length for response snippets attached to debug logs and evidence.
+// Keeps debug output readable and avoids dumping large or sensitive response
+// bodies (other users' data, stack traces) wholesale into logs.
+const SNIPPET_LENGTH = 200;
 
 function matchErrorPattern(body: string, patterns: string[]): string | null {
   const lower = body.toLowerCase();
@@ -64,21 +70,35 @@ function extractBodyFields(spec: Record<string, unknown>, method: string, path: 
   return properties && typeof properties === 'object' ? Object.keys(properties) : [];
 }
 
+// Shared debug call for confirmed hits across all four categories — avoids
+// duplicating the same logger.debug shape four times inline.
+function logHit(
+  logger: Logger,
+  category: Category,
+  evidence: Record<string, unknown>,
+  body: string
+): void {
+  logger.debug('Injection hit confirmed', {
+    event: 'injection.hit',
+    category,
+    ...evidence,
+    responseSnippet: body.slice(0, SNIPPET_LENGTH)
+  });
+}
+
 export function injectionSuite(): Suite {
   return {
     name: 'injection',
     description:
       'Probes API parameters for SQL, NoSQL, template, and command injection signals. Requires an OpenAPI spec.',
     async run(ctx): Promise<Finding[]> {
+      const { config, logger } = ctx;
       if (!ctx.api) {
-        ctx.logger.info(
-          'injection suite skipped: no OpenAPI spec loaded — pass --openapi to enable'
-        );
+        logger.info('injection suite skipped: no OpenAPI spec loaded — pass --openapi to enable');
         return [];
       }
 
       const findings: Finding[] = [];
-      const { config } = ctx;
       const cap = config.active.maxRequestsPerSuite;
       let reqCount = 0;
       const categories = config.injection.categories as Category[];
@@ -101,6 +121,14 @@ export function injectionSuite(): Suite {
         for (const param of params) {
           let hit = false;
 
+          logger.debug('Probing parameter for injection', {
+            event: 'injection.probe',
+            endpoint: `${ep.method.toUpperCase()} ${ep.path}`,
+            parameter: param.name,
+            paramType: param.type,
+            categories
+          });
+
           for (const category of categories) {
             if (hit) break;
 
@@ -108,7 +136,7 @@ export function injectionSuite(): Suite {
               if (hit) break;
 
               if (reqCount >= cap) {
-                ctx.logger.info('injection suite: request cap reached, stopping early');
+                logger.info('injection suite: request cap reached, stopping early');
                 return findings;
               }
 
@@ -135,6 +163,14 @@ export function injectionSuite(): Suite {
                 payload
               };
 
+              logger.debug('Sent injection payload', {
+                event: 'injection.payload.sent',
+                endpoint: baseEvidence.endpoint,
+                parameter: param.name,
+                category,
+                payload
+              });
+
               if (category === 'sql') {
                 const matched = matchErrorPattern(body, SQL_ERROR_PATTERNS);
                 if (matched) {
@@ -153,6 +189,7 @@ export function injectionSuite(): Suite {
                     tags: ['injection', 'sql']
                   });
                   hit = true;
+                  logHit(logger, category, baseEvidence, body);
                 }
               }
 
@@ -174,6 +211,7 @@ export function injectionSuite(): Suite {
                     tags: ['injection', 'nosql']
                   });
                   hit = true;
+                  logHit(logger, category, baseEvidence, body);
                 }
               }
 
@@ -193,6 +231,7 @@ export function injectionSuite(): Suite {
                   tags: ['injection', 'template']
                 });
                 hit = true;
+                logHit(logger, category, baseEvidence, body);
               }
 
               if (category === 'command' && body.includes('sentinel9')) {
@@ -211,6 +250,7 @@ export function injectionSuite(): Suite {
                   tags: ['injection', 'command']
                 });
                 hit = true;
+                logHit(logger, category, baseEvidence, body);
               }
             }
           }

@@ -177,7 +177,7 @@ export function authSuite(): Suite {
 
         const jwtResult = inspectJwts(extractJwts(authedRes), authedRes);
         findings.push(...jwtResult);
-        logger.debug('JWT Results', { event: 'auth.jwt_inspected', jwtResult });
+        logger.debug('JWT Results', { event: 'auth.jwt.inspected', jwtResult });
 
         // Redirect handling:
         // We do not follow redirects. If the target redirects across origins,
