@@ -87,7 +87,6 @@ src/
     injection.ts
 
 examples/
-  vulnerable-api/   (deliberately misconfigured Express server for testing)
 
 test/
   ...

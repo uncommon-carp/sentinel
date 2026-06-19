@@ -10,6 +10,10 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - **Per-suite error handling**: The runner now catches and surfaces errors within suite runs, instead of early-outing with no indications.
 
+### Removed
+
+- **Vulnerable API fixture**: The API testing fixture has been removed to become its own project. @uncommon-carp/anemone
+
 ## [0.3.1] - 2026-06-18
 
 ### Added
