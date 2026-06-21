@@ -38,6 +38,7 @@ export type RunResult = {
   config: Record<string, unknown>;
   findings: Finding[];
   suiteErrors: SuiteError[];
+  reporterErrors: ReporterError[];
 };
 
 export type SuiteContext = {
@@ -50,6 +51,12 @@ export type SuiteContext = {
 
 export type SuiteError = {
   suite: string;
+  message: string;
+  stack?: string;
+};
+
+export type ReporterError = {
+  reporter: string;
   message: string;
   stack?: string;
 };

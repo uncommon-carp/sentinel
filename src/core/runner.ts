@@ -82,20 +82,35 @@ export async function runScan(args: {
     },
     config: args.sanitizedConfig,
     findings,
-    suiteErrors
+    suiteErrors,
+    reporterErrors: []
   };
 
   // Ensure output directory exists before writing any reports.
   fs.mkdirSync(args.outputDir, { recursive: true });
 
+  const reporterErrors: RunResult['reporterErrors'] = [];
+
   // Dispatch result to each configured reporter.
   for (const reporter of args.reporters) {
-    const rendered = await reporter.render(result);
-    const ext = reporter.name === 'markdown' ? 'md' : reporter.name;
-    const outPath = path.join(args.outputDir, `sentinel-report.${ext}`);
-    fs.writeFileSync(outPath, rendered, 'utf-8');
-    logger.debug('Wrote report', { event: 'sentinel.report.written', outPath });
+    try {
+      const rendered = await reporter.render(result);
+      const ext = reporter.name === 'markdown' ? 'md' : reporter.name;
+      const outPath = path.join(args.outputDir, `sentinel-report.${ext}`);
+      fs.writeFileSync(outPath, rendered, 'utf-8');
+      logger.debug('Wrote report', { event: 'sentinel.report.written', outPath });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const stack = err instanceof Error ? err.stack : undefined;
+      logger.error(`Reporter '${reporter.name}' failed: ${message}`, {
+        event: 'sentinel.reporter.error',
+        reporter: reporter.name,
+        ...(stack ? { stack } : {})
+      });
+      reporterErrors.push({ reporter: reporter.name, message, ...(stack ? { stack } : {}) });
+    }
   }
 
+  result.reporterErrors = reporterErrors;
   return result;
 }

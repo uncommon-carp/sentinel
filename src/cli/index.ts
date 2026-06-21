@@ -36,6 +36,12 @@ program
   });
 
 program.parseAsync(process.argv).catch((err) => {
-  console.error(err?.message ?? err);
-  process.exit(1);
+  const message = err instanceof Error ? err.message : String(err);
+  console.error(`sentinel: fatal error — ${message}`);
+  if (process.argv.includes('-v') || process.argv.includes('--verbose')) {
+    if (err instanceof Error && err.stack) {
+      console.error(err.stack);
+    }
+  }
+  process.exit(3);
 });
