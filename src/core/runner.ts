@@ -111,5 +111,6 @@ export async function runScan(args: {
     }
   }
 
+  result.reporterErrors = reporterErrors;
   return result;
 }
