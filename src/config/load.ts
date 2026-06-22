@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SentinelConfigSchema, type SentinelConfig } from './schema.js';
 import { expandEnvPlaceholders } from './env.js';
-import { ZodIssue } from 'zod';
+import type { ZodIssue } from 'zod';
 
 type LoadConfigArgs = {
   configPath?: string;
@@ -33,8 +33,14 @@ export function formatZodIssue(issue: ZodIssue): string {
       return `${path}: expected ${issue.expected}, received ${issue.received}`;
     case 'invalid_enum_value':
       return `${path}: expected one of ${issue.options.map((o) => `'${o}'`).join(' | ')}, received '${issue.received}'`;
-    case 'invalid_string':
-      return `${path}: invalid ${issue.validation as string}`;
+    case 'invalid_string': {
+      const v = issue.validation;
+      if (typeof v === 'string') return `${path}: invalid ${v}`;
+      if ('includes' in v) return `${path}: must include '${v.includes}'`;
+      if ('startsWith' in v) return `${path}: must start with '${v.startsWith}'`;
+      if ('endsWith' in v) return `${path}: must end with '${v.endsWith}'`;
+      return `${path}: invalid format`;
+    }
     case 'too_small':
       return `${path}: must be >= ${issue.minimum}`;
     case 'too_big':
