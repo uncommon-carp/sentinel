@@ -9,6 +9,8 @@
  * Responsibilities:
  * - Control scan lifecycle (timing, ordering, aggregation)
  * - Provide a stable execution environment for suites
+ * - Isolate failures: a thrown suite or reporter is caught and recorded
+ *   (suiteErrors / reporterErrors) so one failure cannot abort the run
  * - Handle output concerns (directory creation, file writing)
  *
  * Explicitly out of scope:
@@ -43,7 +45,6 @@ export async function runScan(args: {
 
   logger.debug('Scan started', { event: 'sentinel.scan.start', suiteCount: args.suites.length });
 
-  // Execute suites sequentially to preserve determinism and limit request bursts.
   for (const suite of args.suites) {
     logger.debug(`Running suite: ${suite.name}`, {
       event: 'sentinel.suite.run',
@@ -73,7 +74,6 @@ export async function runScan(args: {
     duration
   });
 
-  // Aggregate final scan metadata and all findings into a single result object.
   const result: RunResult = {
     meta: {
       ...args.meta,
@@ -91,7 +91,6 @@ export async function runScan(args: {
 
   const reporterErrors: RunResult['reporterErrors'] = [];
 
-  // Dispatch result to each configured reporter.
   for (const reporter of args.reporters) {
     try {
       const rendered = await reporter.render(result);

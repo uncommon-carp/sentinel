@@ -32,10 +32,9 @@ export function makeConfig(
       maxEndpoints: 20,
       includePaths: [],
       excludePaths: [],
-      prefer: ['^/health', '^/status', '^/me', '^/api/health'],
-      seed: 0
+      prefer: ['^/health', '^/status', '^/me', '^/api/health']
     },
-    active: { enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 },
+    active: { maxRequestsPerSuite: 40, timeoutMs: 8000 },
     output: { dir: './sentinel-out', json: true, markdown: true },
     verbose: false,
     ...overrides

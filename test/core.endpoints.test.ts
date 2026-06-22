@@ -35,8 +35,7 @@ describe('selectEndpoints', () => {
         maxEndpoints: 3,
         includePaths: [],
         excludePaths: [],
-        prefer: ['^/health', '^/me'],
-        seed: 0
+        prefer: ['^/health', '^/me']
       }
     });
     const api = makeApi();
@@ -65,8 +64,7 @@ describe('selectEndpoints', () => {
         maxEndpoints: 3,
         includePaths: ['^/users'],
         excludePaths: ['\\{id\\}'], //exclude param path
-        prefer: ['^/health', '^/me'],
-        seed: 0
+        prefer: ['^/health', '^/me']
       }
     });
 

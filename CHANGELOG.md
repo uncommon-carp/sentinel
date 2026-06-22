@@ -40,7 +40,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ### Added
 
-- **Injection suite** (`src/suites/injection.ts`): probes OpenAPI-defined query and body parameters for SQL error disclosure, NoSQL error disclosure, template injection (expression evaluation), and command injection signals. Requires an OpenAPI spec; skips with a logged message if none is provided. Maps to OWASP API1/API8.
+- **Injection suite** (`src/suites/injection.ts`): probes OpenAPI-defined query and body parameters for SQL error disclosure, NoSQL error disclosure, template injection (expression evaluation), and command injection signals. Requires an OpenAPI spec; skips with a logged message if none is provided. Maps to OWASP API8.
   - Defaults to `["sql", "template"]` categories; `command` requires explicit opt-in
   - Defaults to probing both `query` and `body` parameter types
   - Early-out per parameter on first confirmed hit; hard cap via `maxRequestsPerSuite`

@@ -16,11 +16,10 @@ const AuthSchema = z
 
 const ActiveSchema = z
   .object({
-    enabled: z.boolean().default(true),
     maxRequestsPerSuite: z.number().int().min(1).max(500).default(40),
     timeoutMs: z.number().int().min(100).max(60000).default(8000)
   })
-  .default({ enabled: true, maxRequestsPerSuite: 40, timeoutMs: 8000 });
+  .default({ maxRequestsPerSuite: 40, timeoutMs: 8000 });
 
 const RateLimitSchema = z
   .object({
@@ -49,9 +48,7 @@ const ScopeSchema = z
     includePaths: z.array(z.string()).default([]),
     excludePaths: z.array(z.string()).default([]),
 
-    prefer: z.array(z.string()).default(['^/health', '^/status', '^/me', '^/api/health']),
-
-    seed: z.number().int().nonnegative().default(0)
+    prefer: z.array(z.string()).default(['^/health', '^/status', '^/me', '^/api/health'])
   })
   .default({});
 
