@@ -4,6 +4,7 @@ import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { formatZodIssue, loadConfig } from '../src/config/load.js';
 import { SentinelConfigSchema } from '../src/config/schema.js';
+import type { ZodIssue } from 'zod';
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-test-'));
@@ -136,5 +137,18 @@ describe('config/load', () => {
       const formatted = result.error.issues.map(formatZodIssue);
       expect(formatted).toContainEqual('active.maxRequestsPerSuite: must be >= 1');
     }
+  });
+
+  it('formats an invalid_string with object validation', () => {
+    const issues = [
+      { code: 'invalid_string', path: ['target', 'baseUrl'], validation: { includes: 'https' }, message: '' },
+      { code: 'invalid_string', path: ['target', 'baseUrl'], validation: { startsWith: 'https://' }, message: '' },
+      { code: 'invalid_string', path: ['target', 'baseUrl'], validation: { endsWith: '.com' }, message: '' },
+    ] as ZodIssue[];
+
+    const formatted = issues.map(formatZodIssue);
+    expect(formatted[0]).toBe("target.baseUrl: must include 'https'");
+    expect(formatted[1]).toBe("target.baseUrl: must start with 'https://'");
+    expect(formatted[2]).toBe("target.baseUrl: must end with '.com'");
   });
 });
