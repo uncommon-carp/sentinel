@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { formatZodIssue, loadConfig } from '../src/config/load.js';
-import { SentinelConfig, SentinelConfigSchema } from '../src/config/schema.js';
+import { SentinelConfigSchema } from '../src/config/schema.js';
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-test-'));
