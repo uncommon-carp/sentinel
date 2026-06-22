@@ -11,6 +11,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Per-suite error handling**: The runner now catches and surfaces errors within suite runs, instead of early-outing with no indications.
 - **Top level error handling**: The command now more effectively surfaces scan errors outside of suites, including in the reporters, which
   now have their own field on RunResult
+- **Expanded Zod validation error messaging**: Config errors are now better surfaced and more readable
 
 ### Removed
 
