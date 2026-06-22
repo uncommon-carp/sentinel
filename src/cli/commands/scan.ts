@@ -8,6 +8,7 @@ import { runScan } from '../../core/runner.js';
 import { loadOpenApi } from '../../openapi/load.js';
 import { selectEndpoints } from '../../core/endpoints.js';
 import type { SentinelConfig } from '../../config/schema.js';
+import { LoadedApiSpec } from '../../openapi/types.js';
 
 export type ScanCommandOptions = {
   version: string;
@@ -30,6 +31,22 @@ export function buildAuthHeader(auth: SentinelConfig['auth']): Record<string, st
     return { authorization: `Basic ${encoded}` };
   }
   return {};
+}
+
+export function classifyOpenApiError(source: string, err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const suffix = '— endpoint selection and injection suite will be skipped';
+
+  if (err instanceof Error && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+    return `OpenAPI spec not found: '${source}' ${suffix}`;
+  }
+  if (msg.startsWith('Failed to fetch OpenAPI spec')) {
+    return `${msg} ${suffix}`;
+  }
+  if (msg.startsWith('Failed to parse OpenAPI spec')) {
+    return `${msg} ${suffix}`;
+  }
+  return `OpenAPI spec could not be loaded: ${msg} ${suffix}`;
 }
 
 // Separated for testability; CLI can decide process.exit policy.
@@ -69,14 +86,20 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
 
   const outputDir = opts.out ?? config.output.dir;
 
-  const api = config.target.openapi ? await loadOpenApi(config.target.openapi) : undefined;
-
-  if (api) {
-    logger.debug('Loaded OpenAPI spec', {
-      event: 'sentinel.openapi.loaded',
-      source: api.source,
-      endpoints: api.endpoints.length
-    });
+  let api: LoadedApiSpec | undefined;
+  if (config.target.openapi) {
+    try {
+      api = await loadOpenApi(config.target.openapi);
+      logger.debug('Loaded OpenAPI spec', {
+        event: 'sentinel.openapi.loaded',
+        source: api.source,
+        endpoints: api.endpoints.length
+      });
+    } catch (err) {
+      logger.warn(classifyOpenApiError(config.target.openapi, err), {
+        event: 'sentinel.openapi.load_failed'
+      });
+    }
   }
 
   const selectedEndpoints = selectEndpoints({ config, logger, ...(api ? { api } : {}) });

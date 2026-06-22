@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { injectionSuite } from '../src/suites/injection.js';
 import { mockFetchQueue } from './helpers/fetchMock.js';
 import { makeSuiteCtx } from './helpers/makeConfig.js';
@@ -166,5 +166,17 @@ describe('injection suite', () => {
     expect(f?.evidence?.parameter).toBe('name');
     expect(f?.evidence?.paramType).toBe('body');
     expect(f?.evidence?.matchedError).toBe('pg_query');
+  });
+
+  it('skips and logs when no api in ctx', async () => {
+    const ctx = makeSuiteCtx();
+    const infoSpy = vi.spyOn(ctx.logger, 'info');
+
+    const findings = await injectionSuite().run(ctx);
+
+    expect(findings).toEqual([]);
+    expect(infoSpy).toHaveBeenCalledWith(
+      'injection suite skipped: no OpenAPI spec loaded — pass --openapi to enable'
+    );
   });
 });

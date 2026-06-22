@@ -73,4 +73,16 @@ describe('CLI smoke', () => {
     const md = fs.readFileSync(mdPath, 'utf-8');
     expect(md).toContain('# Sentinel Report');
   });
+
+  it('warns and continues when --openapi points at a nonexistent file', async () => {
+    const out = tmpDir();
+    const { exitCode } = await scanCommand({
+      version: '0.0.0',
+      url: 'http://localhost:9999',
+      openapi: '/tmp/definitely-does-not-exist.json',
+      out
+    });
+    // scan ran — not exit 3
+    expect(exitCode).not.toBe(3);
+  });
 });
