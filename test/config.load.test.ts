@@ -2,11 +2,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { loadConfig } from '../src/config/load.js';
+import { formatZodIssue, loadConfig } from '../src/config/load.js';
+import { SentinelConfig, SentinelConfigSchema } from '../src/config/schema.js';
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-test-'));
 }
+
+const minimal = { target: { baseUrl: 'http://localhost:3000' } };
 
 describe('config/load', () => {
   it('loads config from file + CLI overrides (and applies defaults)', async () => {
@@ -80,22 +83,58 @@ describe('config/load', () => {
     }
   });
 
-  it('reports wrong type with expected/received', async () => {
-    // e.g. pass verbose: 'yes' instead of boolean
-    await expect(loadConfig({ baseUrl: 'http://x', verbose: 'yes' as any }))
-      .rejects.toThrow(/verbose: expected boolean, received string/);
+  it('formats a wrong type error', () => {
+    const result = SentinelConfigSchema.safeParse({ ...minimal, verbose: 'yes' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('verbose: expected boolean, received string');
+    }
   });
 
-  it('reports missing required field', async () => {
-    // e.g. omit baseUrl entirely
-    await expect(loadConfig({} as any))
-      .rejects.toThrow(/target\.baseUrl: expected string, received undefined/);
+  it('formats a missing required object', () => {
+    const result = SentinelConfigSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('target: expected object, received undefined');
+    }
   });
 
-  it('reports invalid enum value', async () => {
-    // e.g. auth.type: 'oauth' when schema expects 'bearer' | 'apiKey' | ...
-    await expect(loadConfig({ baseUrl: 'http://x', auth: { type: 'oauth' } } as any))
-      .rejects.toThrow(/auth\.type: expected one of/);
+  it('formats an invalid enum value', () => {
+    const result = SentinelConfigSchema.safeParse({
+      ...minimal,
+      auth: { type: 'oauth' }
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual(
+        expect.stringMatching(/auth\.type: expected one of .+ received 'oauth'/)
+      );
+    }
   });
 
+  it('formats an invalid URL', () => {
+    const result = SentinelConfigSchema.safeParse({
+      target: { baseUrl: 'not-a-url' }
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('target.baseUrl: invalid url');
+    }
+  });
+
+  it('formats a range violation', () => {
+    const result = SentinelConfigSchema.safeParse({
+      ...minimal,
+      active: { maxRequestsPerSuite: 0 }
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('active.maxRequestsPerSuite: must be >= 1');
+    }
+  });
 });

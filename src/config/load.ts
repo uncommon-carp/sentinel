@@ -25,7 +25,7 @@ function sanitizeConfigForReport(cfg: SentinelConfig): Record<string, unknown> {
   return clone as Record<string, unknown>;
 }
 
-function formatZodIssue(issue: ZodIssue): string {
+export function formatZodIssue(issue: ZodIssue): string {
   const path = issue.path.join('.') || '(root)';
 
   switch (issue.code) {
