@@ -79,4 +79,23 @@ describe('config/load', () => {
       process.chdir(oldCwd);
     }
   });
+
+  it('reports wrong type with expected/received', async () => {
+    // e.g. pass verbose: 'yes' instead of boolean
+    await expect(loadConfig({ baseUrl: 'http://x', verbose: 'yes' as any }))
+      .rejects.toThrow(/verbose: expected boolean, received string/);
+  });
+
+  it('reports missing required field', async () => {
+    // e.g. omit baseUrl entirely
+    await expect(loadConfig({} as any))
+      .rejects.toThrow(/target\.baseUrl: expected string, received undefined/);
+  });
+
+  it('reports invalid enum value', async () => {
+    // e.g. auth.type: 'oauth' when schema expects 'bearer' | 'apiKey' | ...
+    await expect(loadConfig({ baseUrl: 'http://x', auth: { type: 'oauth' } } as any))
+      .rejects.toThrow(/auth\.type: expected one of/);
+  });
+
 });
