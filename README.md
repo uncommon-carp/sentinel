@@ -32,7 +32,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 
 | #          | Category                                        | Current Coverage                                                                                                                                                                                  |
 | ---------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API1:2023  | Broken Object Level Authorization               | **Injection suite**: SQL/NoSQL/template error-string detection across OpenAPI-defined parameters                                                                                                  |
+| API1:2023  | Broken Object Level Authorization               | —                                                                                                                                                                                                 |
 | API2:2023  | Broken Authentication                           | **Auth suite**: 401 semantics, auth bypass heuristic, cross-origin redirect risk, JWT inspection (alg:none, missing exp, expired issuance, excessive TTL); **CORS suite**: wildcard + credentials |
 | API3:2023  | Broken Object Property Level Authorization      | —                                                                                                                                                                                                 |
 | API4:2023  | Unrestricted Resource Consumption               | **Rate limit suite**: header inspection, sequential burst probe, missing Retry-After detection                                                                                                    |
@@ -205,6 +205,26 @@ Requires an OpenAPI spec. When enabled, probes parameters extracted from the spe
 
 > **Note:** `command` injection probing must be explicitly added to `categories` — it is not enabled by default. All injection checks are output-based only; no time-based payloads are used.
 
+### Rate Limiting
+
+Tunes the rate limit suite's burst probe.
+
+| Option       | Description                                                            |
+| ------------ | --------------------------------------------------------------------- |
+| `burstCount` | Number of sequential requests in the burst probe (default: `10`)      |
+| `delayMs`    | Delay in milliseconds between burst requests (default: `75`)          |
+
+The burst is capped at `min(ratelimit.burstCount, active.maxRequestsPerSuite)`.
+
+### Active
+
+Global guardrails applied across all active checks.
+
+| Option                | Description                                                       |
+| --------------------- | ---------------------------------------------------------------- |
+| `maxRequestsPerSuite` | Hard cap on requests any single suite may send (default: `40`)   |
+| `timeoutMs`           | Per-request timeout in milliseconds (default: `8000`)            |
+
 ## Architecture Overview
 
 ```
@@ -240,6 +260,9 @@ CLI
 | 0    | Scan completed, no high or critical findings              |
 | 1    | Scan ran but one or more suites failed; report is partial |
 | 2    | Scan completed, high or critical findings present         |
+| 3    | Fatal error before the scan could complete (e.g. invalid config, bad arguments, unexpected crash) |
+
+Exit code precedence is `2 > 1 > 0`: high/critical findings take priority over partial-run signalling. Reporter failures are recorded in the report (`reporterErrors`) but do not change the exit code.
 
 ---
 

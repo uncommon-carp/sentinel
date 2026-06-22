@@ -31,8 +31,7 @@
       "^/status",
       "^/me",
       "^/api/health"
-    ],
-    "seed": 0
+    ]
   },
   "injection": {
     "categories": [
@@ -46,7 +45,6 @@
     ]
   },
   "active": {
-    "enabled": true,
     "maxRequestsPerSuite": 40,
     "timeoutMs": 8000
   },
