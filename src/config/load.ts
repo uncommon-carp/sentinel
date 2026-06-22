@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { SentinelConfigSchema, type SentinelConfig } from './schema.js';
 import { expandEnvPlaceholders } from './env.js';
+import type { ZodIssue } from 'zod';
 
 type LoadConfigArgs = {
   configPath?: string;
@@ -22,6 +23,33 @@ function sanitizeConfigForReport(cfg: SentinelConfig): Record<string, unknown> {
   if (clone.auth.basicPass) clone.auth.basicPass = '***';
   if (clone.auth.apiKeyValue) clone.auth.apiKeyValue = '***';
   return clone as Record<string, unknown>;
+}
+
+export function formatZodIssue(issue: ZodIssue): string {
+  const path = issue.path.join('.') || '(root)';
+
+  switch (issue.code) {
+    case 'invalid_type':
+      return `${path}: expected ${issue.expected}, received ${issue.received}`;
+    case 'invalid_enum_value':
+      return `${path}: expected one of ${issue.options.map((o) => `'${o}'`).join(' | ')}, received '${issue.received}'`;
+    case 'invalid_string': {
+      const v = issue.validation;
+      if (typeof v === 'string') return `${path}: invalid ${v}`;
+      if ('includes' in v) return `${path}: must include '${v.includes}'`;
+      if ('startsWith' in v) return `${path}: must start with '${v.startsWith}'`;
+      if ('endsWith' in v) return `${path}: must end with '${v.endsWith}'`;
+      return `${path}: invalid format`;
+    }
+    case 'too_small':
+      return `${path}: must be >= ${issue.minimum}`;
+    case 'too_big':
+      return `${path}: must be <= ${issue.maximum}`;
+    case 'unrecognized_keys':
+      return `${path}: unrecognized key(s): ${issue.keys.map((k) => `'${k}'`).join(', ')}`;
+    default:
+      return `${path}: ${issue.message}`;
+  }
 }
 
 export async function loadConfig(args: LoadConfigArgs): Promise<{
@@ -47,8 +75,8 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
 
   const parsed = SentinelConfigSchema.safeParse(merged);
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
-    throw new Error(`Invalid config:\n- ${issues.join('\n- ')}`);
+    const issues = parsed.error.issues.map(formatZodIssue);
+    throw new Error(`Invalid config:\n  - ${issues.join('\n  - ')}`);
   }
 
   return { config: parsed.data, sanitized: sanitizeConfigForReport(parsed.data) };

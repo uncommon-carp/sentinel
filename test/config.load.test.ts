@@ -2,11 +2,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { loadConfig } from '../src/config/load.js';
+import { formatZodIssue, loadConfig } from '../src/config/load.js';
+import { SentinelConfigSchema } from '../src/config/schema.js';
+import type { ZodIssue } from 'zod';
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'sentinel-test-'));
 }
+
+const minimal = { target: { baseUrl: 'http://localhost:3000' } };
 
 describe('config/load', () => {
   it('loads config from file + CLI overrides (and applies defaults)', async () => {
@@ -78,5 +82,88 @@ describe('config/load', () => {
     } finally {
       process.chdir(oldCwd);
     }
+  });
+
+  it('formats a wrong type error', () => {
+    const result = SentinelConfigSchema.safeParse({ ...minimal, verbose: 'yes' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('verbose: expected boolean, received string');
+    }
+  });
+
+  it('formats a missing required object', () => {
+    const result = SentinelConfigSchema.safeParse({});
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('target: expected object, received undefined');
+    }
+  });
+
+  it('formats an invalid enum value', () => {
+    const result = SentinelConfigSchema.safeParse({
+      ...minimal,
+      auth: { type: 'oauth' }
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual(
+        expect.stringMatching(/auth\.type: expected one of .+ received 'oauth'/)
+      );
+    }
+  });
+
+  it('formats an invalid URL', () => {
+    const result = SentinelConfigSchema.safeParse({
+      target: { baseUrl: 'not-a-url' }
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('target.baseUrl: invalid url');
+    }
+  });
+
+  it('formats a range violation', () => {
+    const result = SentinelConfigSchema.safeParse({
+      ...minimal,
+      active: { maxRequestsPerSuite: 0 }
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual('active.maxRequestsPerSuite: must be >= 1');
+    }
+  });
+
+  it('formats an invalid_string with object validation', () => {
+    const issues = [
+      {
+        code: 'invalid_string',
+        path: ['target', 'baseUrl'],
+        validation: { includes: 'https' },
+        message: ''
+      },
+      {
+        code: 'invalid_string',
+        path: ['target', 'baseUrl'],
+        validation: { startsWith: 'https://' },
+        message: ''
+      },
+      {
+        code: 'invalid_string',
+        path: ['target', 'baseUrl'],
+        validation: { endsWith: '.com' },
+        message: ''
+      }
+    ] as ZodIssue[];
+
+    const formatted = issues.map(formatZodIssue);
+    expect(formatted[0]).toBe("target.baseUrl: must include 'https'");
+    expect(formatted[1]).toBe("target.baseUrl: must start with 'https://'");
+    expect(formatted[2]).toBe("target.baseUrl: must end with '.com'");
   });
 });
