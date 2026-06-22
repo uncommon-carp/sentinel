@@ -12,6 +12,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 - **Top level error handling**: The command now more effectively surfaces scan errors outside of suites, including in the reporters, which
   now have their own field on RunResult
 - **Expanded Zod validation error messaging**: Config errors are now better surfaced and more readable
+- **OpenAPI spec error handling**: OpenAPI spec errors are handled more gracefully, defaulting to specless runs in the absence of a spec
+  or if a spec is broken
 
 ### Removed
 
