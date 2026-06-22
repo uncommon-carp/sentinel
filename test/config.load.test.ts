@@ -141,9 +141,24 @@ describe('config/load', () => {
 
   it('formats an invalid_string with object validation', () => {
     const issues = [
-      { code: 'invalid_string', path: ['target', 'baseUrl'], validation: { includes: 'https' }, message: '' },
-      { code: 'invalid_string', path: ['target', 'baseUrl'], validation: { startsWith: 'https://' }, message: '' },
-      { code: 'invalid_string', path: ['target', 'baseUrl'], validation: { endsWith: '.com' }, message: '' },
+      {
+        code: 'invalid_string',
+        path: ['target', 'baseUrl'],
+        validation: { includes: 'https' },
+        message: ''
+      },
+      {
+        code: 'invalid_string',
+        path: ['target', 'baseUrl'],
+        validation: { startsWith: 'https://' },
+        message: ''
+      },
+      {
+        code: 'invalid_string',
+        path: ['target', 'baseUrl'],
+        validation: { endsWith: '.com' },
+        message: ''
+      }
     ] as ZodIssue[];
 
     const formatted = issues.map(formatZodIssue);
