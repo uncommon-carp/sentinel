@@ -8,7 +8,7 @@ import { runScan } from '../../core/runner.js';
 import { loadOpenApi } from '../../openapi/load.js';
 import { selectEndpoints } from '../../core/endpoints.js';
 import type { SentinelConfig } from '../../config/schema.js';
-import { LoadedApiSpec } from '../../openapi/types.js';
+import type { LoadedApiSpec } from '../../openapi/types.js';
 
 export type ScanCommandOptions = {
   version: string;

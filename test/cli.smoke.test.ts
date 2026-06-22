@@ -76,13 +76,49 @@ describe('CLI smoke', () => {
 
   it('warns and continues when --openapi points at a nonexistent file', async () => {
     const out = tmpDir();
+    const configPath = path.join(out, 'sentinel.config.json');
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({ ratelimit: { burstCount: 2, delayMs: 0 } }),
+      'utf-8'
+    );
+
+    mockFetchQueue([
+      { status: 200, headers: { 'content-type': 'text/html' }, bodyText: 'ok' }, // headers
+      {
+        status: 200,
+        headers: {
+          'access-control-allow-origin': 'https://sentinel.invalid',
+          'access-control-allow-credentials': 'true'
+        },
+        bodyText: 'ok'
+      }, // cors
+      { status: 401, headers: {} }, // auth probe
+      { status: 200, headers: {} }, // ratelimit phase 1
+      { status: 200, headers: {} }, // ratelimit burst 1
+      { status: 200, headers: {} }, // ratelimit burst 2
+      // inventory GETs
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      { status: 404 },
+      // inventory: POST /graphql introspection
+      { status: 404 }
+    ]);
+
     const { exitCode } = await scanCommand({
       version: '0.0.0',
       url: 'http://localhost:9999',
-      openapi: '/tmp/definitely-does-not-exist.json',
+      config: configPath,
+      openapi: '../definitely-does-not-exist.json',
       out
     });
-    // scan ran — not exit 3
-    expect(exitCode).not.toBe(3);
+
+    expect(exitCode).toBe(0);
   });
 });

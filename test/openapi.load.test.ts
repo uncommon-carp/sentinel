@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
 import { loadOpenApi } from '../src/openapi/load.js';
-import { classifyOpenApiError } from '../src/cli/commands/scan.ts';
+import { classifyOpenApiError } from '../src/cli/commands/scan.js';
 
 describe('openapi/load', () => {
   it('loads a local spec and extracts endpoints', async () => {
