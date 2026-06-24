@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+- **Deploy Workflow** - Laying the groundwork for future AWS deployments and expansion
+
 ## [0.3.2] - 2026-06-22
 
 ### Added
