@@ -22,6 +22,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 - 📦 Typed, validated configuration (Zod schema, runtime validation)
 - 🧱 Clean internal architecture (CLI → runner → suites → reporters)
 - 📝 JSON + Markdown report output
+- ☁️ S3 report upload for Fargate / pipeline mode (env-var driven, additive)
 - 🧪 Designed for testability and CI integration
 - 🗂️ OpenAPI-driven endpoint selection with configurable scope
 - ⚠️ Guardrails for active checks (timeouts, request caps, safe defaults)
@@ -94,18 +95,28 @@ node dist/cli/index.js scan -u https://example.com
 ## Usage
 
 ```bash
-sentinel scan -u <baseUrl> [options]
+sentinel scan [options]
 ```
 
-| Flag            | Description                                           |
-| --------------- | ----------------------------------------------------- |
-| `-u, --url`     | Base URL of the target API (required)                 |
-| `-c, --config`  | Path to config file (default: `sentinel.config.json`) |
-| `--openapi`     | OpenAPI file path or URL for endpoint enumeration     |
-| `-o, --out`     | Output directory (default: `./sentinel-out`)          |
-| `-v, --verbose` | Enable verbose logging                                |
+| Flag            | Description                                                                     |
+| --------------- | ------------------------------------------------------------------------------- |
+| `-u, --url`     | Base URL of the target API (or set `TARGET_URL` env var)                        |
+| `-c, --config`  | Path to config file (default: `sentinel.config.json`)                           |
+| `--openapi`     | OpenAPI file path or URL for endpoint enumeration                               |
+| `-o, --out`     | Output directory (default: `./sentinel-out`)                                    |
+| `-v, --verbose` | Enable verbose logging                                                          |
 
 CLI flags override values from the config file. The `--openapi` flag is equivalent to setting `target.openapi` in the config file.
+
+### Environment variables
+
+| Variable         | Description                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------ |
+| `TARGET_URL`     | Sets `target.baseUrl`. Equivalent to `-u`; the CLI flag takes precedence if both are provided.         |
+| `RESULTS_BUCKET` | S3 bucket name for pipeline mode. Both `RESULTS_BUCKET` and `RUN_ID` must be set to trigger an upload. |
+| `RUN_ID`         | Run identifier used as the S3 object key: `results/<RUN_ID>.json`.                                     |
+
+When `RESULTS_BUCKET` and `RUN_ID` are both present, Sentinel uploads the JSON report to S3 after the scan using the task's IAM role — no credentials are required. Local file output is unaffected. If only one of the two is set, a warning is logged and the upload is skipped.
 
 ---
 
@@ -229,7 +240,7 @@ Global guardrails applied across all active checks.
 
 ```
 CLI
- └─ config loader + validation
+ └─ config loader + validation (env vars: TARGET_URL, RESULTS_BUCKET, RUN_ID)
      └─ runner
          ├─ HTTP client wrapper
          ├─ security suites
@@ -240,8 +251,9 @@ CLI
          │    ├─ inventory
          │    └─ injection
          └─ reporters
-              ├─ JSON
-              └─ Markdown
+              ├─ JSON  (local file)
+              ├─ Markdown  (local file)
+              └─ S3  (pipeline mode, when RESULTS_BUCKET + RUN_ID are set)
 ```
 
 ### Key Concepts
@@ -260,9 +272,9 @@ CLI
 | 0    | Scan completed, no high or critical findings              |
 | 1    | Scan ran but one or more suites failed; report is partial |
 | 2    | Scan completed, high or critical findings present         |
-| 3    | Fatal error before the scan could complete (e.g. invalid config, bad arguments, unexpected crash) |
+| 3    | Fatal error — invalid config, bad arguments, S3 upload failure, or unexpected crash |
 
-Exit code precedence is `2 > 1 > 0`: high/critical findings take priority over partial-run signalling. Reporter failures are recorded in the report (`reporterErrors`) but do not change the exit code.
+Exit code precedence is `2 > 1 > 0`: high/critical findings take priority over partial-run signalling. Reporter failures are recorded in the report (`reporterErrors`) but do not change the exit code. S3 upload failure exits `3` immediately so a broken upload gates the pipeline.
 
 ---
 

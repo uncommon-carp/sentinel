@@ -6,6 +6,12 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+### Added
+
+- **S3 report upload (pipeline / Fargate mode)**: When `RESULTS_BUCKET` and `RUN_ID` are both set, Sentinel uploads its JSON report to `s3://<RESULTS_BUCKET>/results/<RUN_ID>.json` after the scan completes, using the task's IAM role. Upload failure exits nonzero so a broken upload gates the pipeline. Local file output is unaffected — S3 is purely additive.
+- **`TARGET_URL` env var**: Sets `target.baseUrl` from the environment, equivalent to `-u`. The CLI flag still wins if both are provided, making `-u` optional when running as a sidecar container.
+- **Partial pipeline config warning**: If only one of `RESULTS_BUCKET` / `RUN_ID` is set, Sentinel logs a warning and skips the upload rather than failing — a misconfigured sidecar shouldn't silently suppress the exit code.
+
 ## [0.3.2] - 2026-06-22
 
 ### Added
