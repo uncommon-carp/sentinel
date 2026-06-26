@@ -93,9 +93,7 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
   }
 
   const pipeline =
-    envResultsBucket && envRunId
-      ? { resultsBucket: envResultsBucket, runId: envRunId }
-      : undefined;
+    envResultsBucket && envRunId ? { resultsBucket: envResultsBucket, runId: envRunId } : undefined;
 
   const pipelineWarning =
     !pipeline && (envResultsBucket || envRunId)

@@ -17,7 +17,10 @@ program
 program
   .command('scan')
   .description('Run security checks against a target API')
-  .option('-u, --url <baseUrl>', 'Base URL of the target API, e.g. https://api.example.com (or set TARGET_URL env var)')
+  .option(
+    '-u, --url <baseUrl>',
+    'Base URL of the target API, e.g. https://api.example.com (or set TARGET_URL env var)'
+  )
   .option('-c, --config <path>', 'Path to sentinel.config.json', 'sentinel.config.json')
   .option('--openapi <pathOrUrl>', 'OpenAPI file path or URL')
   .option('-o, --out <dir>', 'Output directory', './sentinel-out')
