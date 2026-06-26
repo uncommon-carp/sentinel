@@ -20,7 +20,8 @@ export type DebugEvent =
   | 'injection.hit'
   | 'injection.payload.sent'
   | 'inventory.probe'
-  | 'headers.check';
+  | 'headers.check'
+  | 'sentinel.s3.upload.start';
 
 export type Logger = {
   info(msg: string, data?: Record<string, unknown>): void;

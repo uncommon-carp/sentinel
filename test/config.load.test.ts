@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { formatZodIssue, loadConfig } from '../src/config/load.js';
 import { SentinelConfigSchema } from '../src/config/schema.js';
 import type { ZodIssue } from 'zod';
@@ -13,6 +13,26 @@ function tmpDir() {
 const minimal = { target: { baseUrl: 'http://localhost:3000' } };
 
 describe('config/load', () => {
+  let savedEnv: Record<string, string | undefined> = {};
+
+  beforeEach(() => {
+    savedEnv = {
+      TARGET_URL: process.env.TARGET_URL,
+      RESULTS_BUCKET: process.env.RESULTS_BUCKET,
+      RUN_ID: process.env.RUN_ID
+    };
+    delete process.env.TARGET_URL;
+    delete process.env.RESULTS_BUCKET;
+    delete process.env.RUN_ID;
+  });
+
+  afterEach(() => {
+    for (const [k, v] of Object.entries(savedEnv)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
   it('loads config from file + CLI overrides (and applies defaults)', async () => {
     const dir = tmpDir();
     const configPath = path.join(dir, 'sentinel.config.json');
@@ -165,5 +185,55 @@ describe('config/load', () => {
     expect(formatted[0]).toBe("target.baseUrl: must include 'https'");
     expect(formatted[1]).toBe("target.baseUrl: must start with 'https://'");
     expect(formatted[2]).toBe("target.baseUrl: must end with '.com'");
+  });
+
+  it('TARGET_URL sets baseUrl when no CLI flag provided', async () => {
+    process.env.TARGET_URL = 'http://from-env.example';
+    const { config, pipeline, pipelineWarning } = await loadConfig({});
+    expect(config.target.baseUrl).toBe('http://from-env.example');
+    expect(pipeline).toBeUndefined();
+    expect(pipelineWarning).toBeUndefined();
+  });
+
+  it('CLI flag wins over TARGET_URL', async () => {
+    process.env.TARGET_URL = 'http://from-env.example';
+    const { config } = await loadConfig({ baseUrl: 'http://from-cli.example' });
+    expect(config.target.baseUrl).toBe('http://from-cli.example');
+  });
+
+  it('returns pipeline when RESULTS_BUCKET and RUN_ID are both set', async () => {
+    process.env.TARGET_URL = 'http://localhost:3000';
+    process.env.RESULTS_BUCKET = 'my-bucket';
+    process.env.RUN_ID = 'run-123';
+    const { pipeline, pipelineWarning } = await loadConfig({});
+    expect(pipeline).toEqual({ resultsBucket: 'my-bucket', runId: 'run-123' });
+    expect(pipelineWarning).toBeUndefined();
+  });
+
+  it('returns pipelineWarning when only RESULTS_BUCKET is set', async () => {
+    process.env.TARGET_URL = 'http://localhost:3000';
+    process.env.RESULTS_BUCKET = 'my-bucket';
+    const { pipeline, pipelineWarning } = await loadConfig({});
+    expect(pipeline).toBeUndefined();
+    expect(pipelineWarning).toMatch(/RESULTS_BUCKET is set/);
+    expect(pipelineWarning).toMatch(/RUN_ID is missing/);
+    expect(pipelineWarning).toMatch(/S3 upload skipped/);
+  });
+
+  it('returns pipelineWarning when only RUN_ID is set', async () => {
+    process.env.TARGET_URL = 'http://localhost:3000';
+    process.env.RUN_ID = 'run-123';
+    const { pipeline, pipelineWarning } = await loadConfig({});
+    expect(pipeline).toBeUndefined();
+    expect(pipelineWarning).toMatch(/RESULTS_BUCKET is missing/);
+    expect(pipelineWarning).toMatch(/RUN_ID is set/);
+    expect(pipelineWarning).toMatch(/S3 upload skipped/);
+  });
+
+  it('returns no pipeline when neither RESULTS_BUCKET nor RUN_ID is set', async () => {
+    process.env.TARGET_URL = 'http://localhost:3000';
+    const { pipeline, pipelineWarning } = await loadConfig({});
+    expect(pipeline).toBeUndefined();
+    expect(pipelineWarning).toBeUndefined();
   });
 });
