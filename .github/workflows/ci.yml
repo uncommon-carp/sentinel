@@ -66,6 +66,9 @@ jobs:
           aws ecr get-login-password --region ${{ vars.WEIR_AWS_REGION }} \
             | docker login --username AWS --password-stdin \
               $(echo ${{ vars.WEIR_ECR_SENTINEL_REPO }} | cut -d/ -f1)
+          SHA=$(git rev-parse --short HEAD)
           docker build --platform linux/amd64 \
-            -t ${{ vars.WEIR_ECR_SENTINEL_REPO }}:latest .
+            -t ${{ vars.WEIR_ECR_SENTINEL_REPO }}:latest \
+            -t ${{ vars.WEIR_ECR_SENTINEL_REPO }}:${SHA} .
           docker push ${{ vars.WEIR_ECR_SENTINEL_REPO }}:latest
+          docker push ${{ vars.WEIR_ECR_SENTINEL_REPO }}:${SHA}
