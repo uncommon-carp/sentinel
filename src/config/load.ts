@@ -52,21 +52,34 @@ export function formatZodIssue(issue: ZodIssue): string {
   }
 }
 
+export type Pipeline = {
+  resultsBucket: string;
+  runId: string;
+};
+
 export async function loadConfig(args: LoadConfigArgs): Promise<{
   config: SentinelConfig;
   sanitized: Record<string, unknown>;
+  pipeline?: Pipeline;
+  pipelineWarning?: string;
 }> {
   const defaultPath = path.resolve(process.cwd(), 'sentinel.config.json');
   const filePath = path.resolve(process.cwd(), args.configPath ?? defaultPath);
 
   const fromFile = readJsonIfExists(filePath) ?? {};
   const fileConfig = expandEnvPlaceholders(fromFile) as Record<string, unknown>;
+
+  const envTargetUrl = process.env.TARGET_URL;
+  const envResultsBucket = process.env.RESULTS_BUCKET;
+  const envRunId = process.env.RUN_ID;
+
   const merged = {
     ...fileConfig,
     target: {
       ...(typeof fileConfig.target === 'object' && fileConfig.target !== null
         ? (fileConfig.target as Record<string, unknown>)
         : {}),
+      ...(envTargetUrl ? { baseUrl: envTargetUrl } : {}),
       ...(args.baseUrl ? { baseUrl: args.baseUrl } : {}),
       ...(args.openapi ? { openapi: args.openapi } : {})
     },
@@ -79,5 +92,20 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
     throw new Error(`Invalid config:\n  - ${issues.join('\n  - ')}`);
   }
 
-  return { config: parsed.data, sanitized: sanitizeConfigForReport(parsed.data) };
+  const pipeline =
+    envResultsBucket && envRunId
+      ? { resultsBucket: envResultsBucket, runId: envRunId }
+      : undefined;
+
+  const pipelineWarning =
+    !pipeline && (envResultsBucket || envRunId)
+      ? `Pipeline config incomplete: ${envResultsBucket ? 'RESULTS_BUCKET is set' : 'RESULTS_BUCKET is missing'} and ${envRunId ? 'RUN_ID is set' : 'RUN_ID is missing'} — S3 upload skipped`
+      : undefined;
+
+  return {
+    config: parsed.data,
+    sanitized: sanitizeConfigForReport(parsed.data),
+    ...(pipeline ? { pipeline } : {}),
+    ...(pipelineWarning ? { pipelineWarning } : {})
+  };
 }

@@ -1,4 +1,5 @@
 import { loadConfig } from '../../config/load.js';
+import { uploadReportToS3 } from '../../reporters/s3.js';
 import { createLogger } from '../../core/logger.js';
 import { HttpClient } from '../../http/client.js';
 import { buildSuites } from '../../suites/index.js';
@@ -12,7 +13,7 @@ import type { LoadedApiSpec } from '../../openapi/types.js';
 
 export type ScanCommandOptions = {
   version: string;
-  url: string;
+  url?: string;
   config?: string;
   openapi?: string;
   out?: string;
@@ -54,14 +55,18 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   exitCode: number;
   outputDir: string;
 }> {
-  const { config, sanitized } = await loadConfig({
+  const { config, sanitized, pipeline, pipelineWarning } = await loadConfig({
     ...(opts.config !== undefined ? { configPath: opts.config } : {}),
     ...(opts.openapi !== undefined ? { openapi: opts.openapi } : {}),
     ...(opts.verbose !== undefined ? { verbose: opts.verbose } : {}),
-    baseUrl: opts.url
+    ...(opts.url !== undefined ? { baseUrl: opts.url } : {})
   });
 
   const logger = createLogger({ verbose: config.verbose });
+
+  if (pipelineWarning) {
+    logger.warn(pipelineWarning, { event: 'sentinel.pipeline.partial' });
+  }
 
   const http = new HttpClient(
     {
@@ -116,6 +121,10 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
       version: opts.version
     }
   });
+
+  if (pipeline) {
+    await uploadReportToS3(pipeline.resultsBucket, pipeline.runId, result);
+  }
 
   const hasHigh = result.findings.some((f) => f.severity === 'high' || f.severity === 'critical');
   const incomplete = result.suiteErrors.length > 0;
