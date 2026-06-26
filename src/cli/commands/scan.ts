@@ -123,7 +123,16 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   });
 
   if (pipeline) {
+    logger.debug('Uploading report to S3', {
+      event: 'sentinel.s3.upload.start',
+      bucket: pipeline.resultsBucket,
+      runId: pipeline.runId
+    });
     await uploadReportToS3(pipeline.resultsBucket, pipeline.runId, result);
+    logger.info(
+      `Report uploaded to s3://${pipeline.resultsBucket}/results/${pipeline.runId}.json`,
+      { event: 'sentinel.s3.uploaded', bucket: pipeline.resultsBucket, runId: pipeline.runId }
+    );
   }
 
   const hasHigh = result.findings.some((f) => f.severity === 'high' || f.severity === 'critical');
