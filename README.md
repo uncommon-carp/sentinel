@@ -1,8 +1,25 @@
 # Sentinel
 
-Sentinel is a CLI-based API security scanner written in TypeScript. It runs a curated set of **passive** and **controlled active** checks against HTTP APIs and produces **structured JSON** and **human-readable Markdown** reports.
+Sentinel is an OWASP API Security Top 10 scanner for HTTP APIs. Point it at any API — with or without an OpenAPI spec — and get structured findings across misconfiguration, auth weaknesses, injection surface, and inventory drift. Runs in seconds from the CLI, gates pull requests as a Fargate sidecar, or slots into any CI pipeline. No proxy setup, no traffic interception.
 
-The goal is to provide a fast, repeatable first-pass security signal for backend teams: locally during development or automatically in CI.
+---
+
+## Part of the Sentinel pipeline
+
+| Repo                                                | Role                                                                              |
+| --------------------------------------------------- | --------------------------------------------------------------------------------- |
+| **sentinel** (this)                                 | OWASP API scanner — the tool                                                      |
+| [anemone](https://github.com/uncommon-carp/anemone) | Deliberately vulnerable target API — scan fixture and regression harness          |
+| [weir](https://github.com/uncommon-carp/weir)       | Ephemeral DAST gate — provisions isolated Fargate tasks, runs Sentinel, gates PRs |
+
+---
+
+## What's new in 0.4.0
+
+- **Pipeline mode** — S3 report upload via env-var config (`RESULTS_BUCKET`, `RUN_ID`). Designed for [Weir](https://github.com/uncommon-carp/weir) but works with any S3-compatible pipeline.
+- **Docker image** — Sentinel ships as a container image for use as a Fargate sidecar or standalone pipeline component.
+- **[`FINDINGS.md`](./FINDINGS.md)** — canonical finding ID registry. All IDs, severities, OWASP mappings, and remediation guidance in one place.
+- **Finding ID alignment** — JWT finding IDs corrected to `auth.jwt_*` prefix throughout.
 
 ---
 
@@ -12,7 +29,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 
 - HTTP security headers (HSTS, X-Content-Type-Options, Referrer-Policy)
 - CORS misconfiguration detection (wildcard + credentials, origin reflection)
-- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics, JWT inspection > alg:none, missing exp, expired tokens, excessive TTL)
+- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics, JWT inspection — alg:none, missing exp, expired tokens, excessive TTL)
 - Rate limiting detection (header inspection, burst probe, Retry-After coverage)
 - API inventory (sensitive endpoint exposure, stale version detection)
 - Injection probes (SQL, NoSQL, template error-string detection; command injection with explicit opt-in), requires OpenAPI spec
@@ -22,7 +39,8 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 - 📦 Typed, validated configuration (Zod schema, runtime validation)
 - 🧱 Clean internal architecture (CLI → runner → suites → reporters)
 - 📝 JSON + Markdown report output
-- ☁️ S3 report upload for Fargate / pipeline mode (env-var driven, additive)
+- ☁️ S3 report upload for pipeline mode (env-var driven, additive)
+- 🐳 Docker image for CI and Fargate sidecar use
 - 🧪 Designed for testability and CI integration
 - 🗂️ OpenAPI-driven endpoint selection with configurable scope
 - ⚠️ Guardrails for active checks (timeouts, request caps, safe defaults)
@@ -30,6 +48,8 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 ---
 
 ## OWASP API Top 10 Coverage
+
+Full finding ID registry: [`FINDINGS.md`](./FINDINGS.md)
 
 | #          | Category                                        | Current Coverage                                                                                                                                                                                  |
 | ---------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -40,7 +60,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 | API5:2023  | Broken Function Level Authorization             | Partial — auth suite detects unprotected endpoints (heuristic)                                                                                                                                    |
 | API6:2023  | Unrestricted Access to Sensitive Business Flows | —                                                                                                                                                                                                 |
 | API7:2023  | Server Side Request Forgery                     | —                                                                                                                                                                                                 |
-| API8:2023  | Security Misconfiguration                       | **Headers suite**: HSTS, X-Content-Type-Options, Referrer-Policy; **CORS suite**: misconfiguration; **Injection suite**: error disclosure, template/command injection signals detection           |
+| API8:2023  | Security Misconfiguration                       | **Headers suite**: HSTS, X-Content-Type-Options, Referrer-Policy; **CORS suite**: misconfiguration; **Injection suite**: error disclosure, template/command injection signal detection            |
 | API9:2023  | Improper Inventory Management                   | **Inventory suite**: sensitive endpoint exposure (/debug, /actuator, /swagger, etc.), stale version detection cross-referenced against OpenAPI spec                                               |
 | API10:2023 | Unsafe Consumption of APIs                      | —                                                                                                                                                                                                 |
 
@@ -48,7 +68,7 @@ The goal is to provide a fast, repeatable first-pass security signal for backend
 
 ## Quickstart
 
-### Install globally from NPM
+### Install globally from npm
 
 ```bash
 npm install -g @uncommon-carp/sentinel
@@ -57,7 +77,7 @@ npm install -g @uncommon-carp/sentinel
 ### Run a scan
 
 ```bash
-sentinel scan -u https://example.com
+sentinel scan -u https://api.example.com
 ```
 
 Reports will be written to:
@@ -68,26 +88,49 @@ Reports will be written to:
   └─ sentinel-report.md
 ```
 
-## Run From Source
+---
 
-### Clone the repo and install dependencies
+## Pipeline mode (Weir)
+
+Sentinel runs as a container sidecar in [Weir](https://github.com/uncommon-carp/weir), an ephemeral DAST gate that provisions isolated Fargate tasks per pull request. When `RESULTS_BUCKET` and `RUN_ID` are set, Sentinel uploads its JSON report to S3 and exits — Weir reads the report and fails the PR check on high or critical findings.
+
+To use Sentinel as a standalone container:
+
+```bash
+# Build from source
+docker build -t sentinel .
+
+# Run against a local target
+docker run --rm \
+  -e TARGET_URL=http://host.docker.internal:3000 \
+  sentinel scan
+
+# Pipeline mode — S3 upload
+docker run --rm \
+  -e TARGET_URL=http://host.docker.internal:3000 \
+  -e RESULTS_BUCKET=my-bucket \
+  -e RUN_ID=my-run \
+  sentinel scan
+
+# With a config file
+docker run --rm \
+  -v $(pwd)/sentinel.config.json:/app/sentinel.config.json \
+  -e TARGET_URL=http://host.docker.internal:3000 \
+  sentinel scan
+```
+
+See [Weir](https://github.com/uncommon-carp/weir) for the full pipeline setup.
+
+---
+
+## Run from source
 
 ```bash
 git clone https://github.com/uncommon-carp/sentinel.git
 cd sentinel
 npm install
-```
-
-### Build the project
-
-```bash
 npm run build
-```
-
-### Run a scan
-
-```bash
-node dist/cli/index.js scan -u https://example.com
+node dist/cli/index.js scan -u https://api.example.com
 ```
 
 ---
@@ -98,15 +141,15 @@ node dist/cli/index.js scan -u https://example.com
 sentinel scan [options]
 ```
 
-| Flag            | Description                                                                     |
-| --------------- | ------------------------------------------------------------------------------- |
-| `-u, --url`     | Base URL of the target API (or set `TARGET_URL` env var)                        |
-| `-c, --config`  | Path to config file (default: `sentinel.config.json`)                           |
-| `--openapi`     | OpenAPI file path or URL for endpoint enumeration                               |
-| `-o, --out`     | Output directory (default: `./sentinel-out`)                                    |
-| `-v, --verbose` | Enable verbose logging                                                          |
+| Flag            | Description                                              |
+| --------------- | -------------------------------------------------------- |
+| `-u, --url`     | Base URL of the target API (or set `TARGET_URL` env var) |
+| `-c, --config`  | Path to config file (default: `sentinel.config.json`)    |
+| `--openapi`     | OpenAPI file path or URL for endpoint enumeration        |
+| `-o, --out`     | Output directory (default: `./sentinel-out`)             |
+| `-v, --verbose` | Enable verbose logging                                   |
 
-CLI flags override values from the config file. The `--openapi` flag is equivalent to setting `target.openapi` in the config file.
+CLI flags override config file values. The `--openapi` flag is equivalent to setting `target.openapi` in the config file.
 
 ### Environment variables
 
@@ -116,7 +159,7 @@ CLI flags override values from the config file. The `--openapi` flag is equivale
 | `RESULTS_BUCKET` | S3 bucket name for pipeline mode. Both `RESULTS_BUCKET` and `RUN_ID` must be set to trigger an upload. |
 | `RUN_ID`         | Run identifier used as the S3 object key: `results/<RUN_ID>.json`.                                     |
 
-When `RESULTS_BUCKET` and `RUN_ID` are both present, Sentinel uploads the JSON report to S3 after the scan using the task's IAM role — no credentials are required. Local file output is unaffected. If only one of the two is set, a warning is logged and the upload is skipped.
+When `RESULTS_BUCKET` and `RUN_ID` are both present, Sentinel uploads the JSON report to S3 after the scan using the task's IAM role — no credentials required. Local file output is unaffected. If only one of the two is set, a warning is logged and the upload is skipped.
 
 ---
 
@@ -203,7 +246,7 @@ When scope is disabled or no OpenAPI spec is provided, suites fall back to probi
 
 ### Suites
 
-The `suites` block enables or disables individual test suites. All six implemented suites (`headers`, `cors`, `auth`, `ratelimit`, `inventory`, `injection`) are enabled by default, except `injection`, which defaults to `false` and requires `--openapi` or `target.openapi` to run. When enabled, it uses the `injection` config block below.
+The `suites` block enables or disables individual test suites. All suites are enabled by default except `injection`, which defaults to `false` and requires `--openapi` or `target.openapi` to run.
 
 ### Injection
 
@@ -218,25 +261,21 @@ Requires an OpenAPI spec. When enabled, probes parameters extracted from the spe
 
 ### Rate Limiting
 
-Tunes the rate limit suite's burst probe.
-
-| Option       | Description                                                            |
-| ------------ | --------------------------------------------------------------------- |
-| `burstCount` | Number of sequential requests in the burst probe (default: `10`)      |
-| `delayMs`    | Delay in milliseconds between burst requests (default: `75`)          |
-
-The burst is capped at `min(ratelimit.burstCount, active.maxRequestsPerSuite)`.
+| Option       | Description                                                      |
+| ------------ | ---------------------------------------------------------------- |
+| `burstCount` | Number of sequential requests in the burst probe (default: `10`) |
+| `delayMs`    | Delay in milliseconds between burst requests (default: `75`)     |
 
 ### Active
 
-Global guardrails applied across all active checks.
+| Option                | Description                                                    |
+| --------------------- | -------------------------------------------------------------- |
+| `maxRequestsPerSuite` | Hard cap on requests any single suite may send (default: `40`) |
+| `timeoutMs`           | Per-request timeout in milliseconds (default: `8000`)          |
 
-| Option                | Description                                                       |
-| --------------------- | ---------------------------------------------------------------- |
-| `maxRequestsPerSuite` | Hard cap on requests any single suite may send (default: `40`)   |
-| `timeoutMs`           | Per-request timeout in milliseconds (default: `8000`)            |
+---
 
-## Architecture Overview
+## Architecture overview
 
 ```
 CLI
@@ -256,29 +295,27 @@ CLI
               └─ S3  (pipeline mode, when RESULTS_BUCKET + RUN_ID are set)
 ```
 
-### Key Concepts
-
-- Suites are pluggable modules that return structured findings.
-- Runner orchestrates suites and reporters.
-- Reporters transform scan results into output formats.
-- HTTP client centralizes request behavior, auth injection, and timeouts.
+- **Suites** are pluggable modules that return structured findings.
+- **Runner** orchestrates suites and reporters.
+- **Reporters** transform scan results into output formats.
+- **HTTP client** centralizes request behavior, auth injection, and timeouts.
 
 ---
 
-## Exit Codes
+## Exit codes
 
-| Code | Meaning                                                   |
-| ---- | --------------------------------------------------------- |
-| 0    | Scan completed, no high or critical findings              |
-| 1    | Scan ran but one or more suites failed; report is partial |
-| 2    | Scan completed, high or critical findings present         |
+| Code | Meaning                                                                             |
+| ---- | ----------------------------------------------------------------------------------- |
+| 0    | Scan completed, no high or critical findings                                        |
+| 1    | Scan ran but one or more suites failed; report is partial                           |
+| 2    | Scan completed, high or critical findings present                                   |
 | 3    | Fatal error — invalid config, bad arguments, S3 upload failure, or unexpected crash |
 
 Exit code precedence is `2 > 1 > 0`: high/critical findings take priority over partial-run signalling. Reporter failures are recorded in the report (`reporterErrors`) but do not change the exit code. S3 upload failure exits `3` immediately so a broken upload gates the pipeline.
 
 ---
 
-## Safety and Scope
+## Safety and scope
 
 Sentinel is designed to be non-destructive by default:
 
@@ -287,4 +324,6 @@ Sentinel is designed to be non-destructive by default:
 - No state-changing requests are sent unless explicitly enabled
 - Redirects are not followed
 
-It is intended for authorized testing only.
+**Scanner scope:** Sentinel performs passive black-box surface scanning (Tier-0). Authorization-logic vulnerabilities (BOLA, BFLA) require multi-identity authenticated testing and are out of scope for this mode. Authenticated scanning (Tier-1) and multi-identity testing (Tier-2) are on the roadmap as opt-in tiers.
+
+Sentinel is intended for authorized testing only.
