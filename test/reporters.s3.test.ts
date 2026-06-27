@@ -29,7 +29,11 @@ describe('reporters/s3', () => {
     const report = { meta: { version: '0.3.2' }, findings: [] };
     await uploadReportToS3('my-bucket', 'run-abc', report);
 
-    expect(MockS3Client).toHaveBeenCalledWith({});
+    expect(MockS3Client).toHaveBeenCalledWith({
+      endpoint: '',
+      forcePathStyle: true,
+      region: 'us-east-1'
+    });
     expect(MockPutObjectCommand).toHaveBeenCalledWith({
       Bucket: 'my-bucket',
       Key: 'results/run-abc.json',
@@ -42,7 +46,11 @@ describe('reporters/s3', () => {
   it('uses the task IAM role (no explicit credentials)', async () => {
     await uploadReportToS3('bucket', 'run-id', {});
     const [[constructorArg]] = MockS3Client.mock.calls;
-    expect(constructorArg).toEqual({});
+    expect(constructorArg).toEqual({
+      endpoint: '',
+      forcePathStyle: true,
+      region: 'us-east-1'
+    });
   });
 
   it('propagates S3 errors', async () => {
