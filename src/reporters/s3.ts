@@ -5,7 +5,12 @@ export async function uploadReportToS3(
   runId: string,
   report: unknown
 ): Promise<void> {
-  const client = new S3Client({});
+  const client = new S3Client({
+    forcePathStyle: true,
+    endpoint: process.env.AWS_ENDPOINT_URL ?? '',
+    region: process.env.AWS_REGION ?? 'us-east-1',
+  });
+
   await client.send(
     new PutObjectCommand({
       Bucket: resultsBucket,
