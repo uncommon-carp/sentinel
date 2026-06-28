@@ -14,8 +14,7 @@ RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
 RUN useradd --uid 1001 --no-create-home sentinel && \
     mkdir -p /app/sentinel-out && \
-    chown -R sentinel:sentinel /app
-USER sentinel
+    chown sentinel:sentinel /app/sentinel-out
 USER sentinel
 ENTRYPOINT ["node", "dist/cli/index.js"]
 CMD ["scan"]
