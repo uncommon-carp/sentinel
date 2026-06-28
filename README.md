@@ -266,6 +266,8 @@ Requires an OpenAPI spec. When enabled, probes parameters extracted from the spe
 | `burstCount` | Number of sequential requests in the burst probe (default: `10`) |
 | `delayMs`    | Delay in milliseconds between burst requests (default: `75`)     |
 
+The burst is capped at `min(ratelimit.burstCount, active.maxRequestsPerSuite)`.
+
 ### Active
 
 | Option                | Description                                                    |
