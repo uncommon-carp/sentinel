@@ -1,7 +1,7 @@
 {
   "name": "@uncommon-carp/sentinel",
-  "version": "0.3.2",
-  "description": "Sentinel: CLI API security scanner (passive + active checks)",
+  "version": "0.4.0",
+  "description": "OWASP API Security Top 10 Scanner - spec-driven, CI-ready, no proxy setup",
   "license": "MIT",
   "type": "module",
   "repository": {

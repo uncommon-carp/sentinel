@@ -6,11 +6,20 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-27
+
 ### Added
 
 - **S3 report upload (pipeline / Fargate mode)**: When `RESULTS_BUCKET` and `RUN_ID` are both set, Sentinel uploads its JSON report to `s3://<RESULTS_BUCKET>/results/<RUN_ID>.json` after the scan completes, using the task's IAM role. Upload failure exits nonzero so a broken upload gates the pipeline. Local file output is unaffected — S3 is purely additive.
 - **`TARGET_URL` env var**: Sets `target.baseUrl` from the environment, equivalent to `-u`. The CLI flag still wins if both are provided, making `-u` optional when running as a sidecar container.
 - **Partial pipeline config warning**: If only one of `RESULTS_BUCKET` / `RUN_ID` is set, Sentinel logs a warning and skips the upload rather than failing — a misconfigured sidecar shouldn't silently suppress the exit code.
+- **Dockerfile**: Sentinel ships as a container image for use as a Fargate sidecar or standalone pipeline component. See README for usage.
+- **`FINDINGS.md`**: Canonical finding ID registry — all emitted IDs, severities, OWASP mappings, and remediation guidance in one place. Downstream repos (Anemone, Weir) reference this as the source of truth.
+
+### Fixed
+
+- **JWT finding ID prefixes**: `jwt.alg_none`, `jwt.long_ttl`, and `jwt.missing_exp` corrected to `auth.jwt_alg_none`, `auth.jwt_long_ttl`, and `auth.jwt_missing_exp` throughout. Consumers relying on the old prefixes will need to update.
+- **S3 client endpoint handling**: `AWS_ENDPOINT_URL` and `forcePathStyle` are now conditionally applied only when the env var is present. Previously an empty-string endpoint was passed to the SDK in production, breaking real S3 URL construction.
 
 ## [0.3.2] - 2026-06-22
 
