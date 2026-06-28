@@ -1,6 +1,6 @@
 # Sentinel Finding IDs — Source of Truth
 
-All finding IDs emitted by [Sentinel](./sentinel). Each entry is stable — downstream repos (anemone, weir) reference these IDs directly.
+All finding IDs emitted by Sentinel. Each entry is stable — downstream repos (anemone, weir) reference these IDs directly.
 
 Severities: `critical` › `high` › `medium` › `low` › `info`
 
@@ -10,15 +10,15 @@ Severities: `critical` › `high` › `medium` › `low` › `info`
 
 Checks HTTP auth semantics and basic auth enforcement behavior. Probes configurable `auth.probePaths` (default `["/"]`).
 
-| ID | Severity | Title | OWASP |
-|----|----------|-------|-------|
-| `auth.jwt_alg_none` | critical | JWT with alg:none detected in response | API2: Broken Authentication |
-| `auth.jwt_expired_accepted` | high | Server issued an already-expired JWT | API2: Broken Authentication |
-| `auth.jwt_missing_exp` | medium | JWT with no expiration claim (exp) detected in response | API2: Broken Authentication |
-| `auth.redirect_cross_origin` | medium | Cross-origin redirect observed on auth probe | API2: Broken Authentication |
-| `auth.possible_bypass_probe` | medium | Auth probe succeeded with and without credentials | API2: Broken Authentication |
-| `auth.jwt_long_ttl` | low | JWT with unusually long TTL detected in response | API2: Broken Authentication |
-| `auth.401_missing_www_authenticate` | low | 401 response missing WWW-Authenticate header | API2: Broken Authentication |
+| ID                                  | Severity | Title                                                   | OWASP                       |
+| ----------------------------------- | -------- | ------------------------------------------------------- | --------------------------- |
+| `auth.jwt_alg_none`                 | critical | JWT with alg:none detected in response                  | API2: Broken Authentication |
+| `auth.jwt_expired_accepted`         | high     | Server issued an already-expired JWT                    | API2: Broken Authentication |
+| `auth.jwt_missing_exp`              | medium   | JWT with no expiration claim (exp) detected in response | API2: Broken Authentication |
+| `auth.redirect_cross_origin`        | medium   | Cross-origin redirect observed on auth probe            | API2: Broken Authentication |
+| `auth.possible_bypass_probe`        | medium   | Auth probe succeeded with and without credentials       | API2: Broken Authentication |
+| `auth.jwt_long_ttl`                 | low      | JWT with unusually long TTL detected in response        | API2: Broken Authentication |
+| `auth.401_missing_www_authenticate` | low      | 401 response missing WWW-Authenticate header            | API2: Broken Authentication |
 
 ### Finding details
 
@@ -65,10 +65,10 @@ Endpoint returned 401 Unauthorized but did not include a `WWW-Authenticate` head
 
 Performs basic CORS misconfiguration checks by sending a GET with a synthetic `Origin` header to selected endpoints.
 
-| ID | Severity | Title | OWASP |
-|----|----------|-------|-------|
-| `cors.wildcard_with_credentials` | high | CORS allows credentials with wildcard origin | API8: Security Misconfiguration |
-| `cors.origin_reflection` | medium | CORS reflects arbitrary Origin | API8: Security Misconfiguration |
+| ID                               | Severity | Title                                        | OWASP                           |
+| -------------------------------- | -------- | -------------------------------------------- | ------------------------------- |
+| `cors.wildcard_with_credentials` | high     | CORS allows credentials with wildcard origin | API8: Security Misconfiguration |
+| `cors.origin_reflection`         | medium   | CORS reflects arbitrary Origin               | API8: Security Misconfiguration |
 
 ### Finding details
 
@@ -88,11 +88,11 @@ The server reflected the `Origin` header value back in `Access-Control-Allow-Ori
 
 Checks for baseline HTTP security headers across selected endpoints. Multiple affected endpoints are collapsed into one finding per missing header.
 
-| ID | Severity | Title | OWASP |
-|----|----------|-------|-------|
-| `headers.missing_hsts` | medium | Missing Strict-Transport-Security (HSTS) | API8: Security Misconfiguration |
-| `headers.missing_xcto` | low | Missing X-Content-Type-Options | API8: Security Misconfiguration |
-| `headers.missing_referrer_policy` | low | Missing Referrer-Policy | API8: Security Misconfiguration |
+| ID                                | Severity | Title                                    | OWASP                           |
+| --------------------------------- | -------- | ---------------------------------------- | ------------------------------- |
+| `headers.missing_hsts`            | medium   | Missing Strict-Transport-Security (HSTS) | API8: Security Misconfiguration |
+| `headers.missing_xcto`            | low      | Missing X-Content-Type-Options           | API8: Security Misconfiguration |
+| `headers.missing_referrer_policy` | low      | Missing Referrer-Policy                  | API8: Security Misconfiguration |
 
 ### Finding details
 
@@ -117,12 +117,12 @@ Checks for baseline HTTP security headers across selected endpoints. Multiple af
 
 Probes API query and body parameters for injection signals using error-string and output-based detection. Requires an OpenAPI spec (`--openapi`). One finding per parameter per category — no stacking. No time-based payloads.
 
-| ID | Severity | Title | OWASP |
-|----|----------|-------|-------|
-| `injection.possible_command_injection` | critical | Possible command injection detected | API3: Injection |
-| `injection.sql_error_disclosure` | high | SQL injection error string detected in response | API3: Injection |
-| `injection.nosql_error_disclosure` | high | NoSQL injection error string detected in response | API3: Injection |
-| `injection.possible_template_injection` | high | Possible template injection detected | API3: Injection |
+| ID                                      | Severity | Title                                             | OWASP           |
+| --------------------------------------- | -------- | ------------------------------------------------- | --------------- |
+| `injection.possible_command_injection`  | critical | Possible command injection detected               | API3: Injection |
+| `injection.sql_error_disclosure`        | high     | SQL injection error string detected in response   | API3: Injection |
+| `injection.nosql_error_disclosure`      | high     | NoSQL injection error string detected in response | API3: Injection |
+| `injection.possible_template_injection` | high     | Possible template injection detected              | API3: Injection |
 
 ### Finding details
 
@@ -152,11 +152,11 @@ A template expression payload (`{{7*7}}`, `${7*7}`, `<%= 7*7 %>`) produced outpu
 
 Probes common API paths for sensitive endpoint exposure, GraphQL introspection, and stale version endpoints. Maps to OWASP API9. Multiple paths triggering the same class of issue are collapsed into one finding.
 
-| ID | Severity | Title | OWASP |
-|----|----------|-------|-------|
-| `inventory.sensitive_endpoint_exposed` | medium | Sensitive endpoint(s) responding with 2xx | API9: Improper Inventory Management |
-| `inventory.stale_version_responding` | medium | Deprecated API version endpoint is responding | API9: Improper Inventory Management |
-| `inventory.graphql_introspection_enabled` | low | GraphQL introspection is enabled | API9: Improper Inventory Management |
+| ID                                        | Severity | Title                                         | OWASP                               |
+| ----------------------------------------- | -------- | --------------------------------------------- | ----------------------------------- |
+| `inventory.sensitive_endpoint_exposed`    | medium   | Sensitive endpoint(s) responding with 2xx     | API9: Improper Inventory Management |
+| `inventory.stale_version_responding`      | medium   | Deprecated API version endpoint is responding | API9: Improper Inventory Management |
+| `inventory.graphql_introspection_enabled` | low      | GraphQL introspection is enabled              | API9: Improper Inventory Management |
 
 ### Finding details
 
@@ -181,11 +181,11 @@ The `/graphql` endpoint responded to an introspection query and returned schema 
 
 Checks for HTTP rate limiting via header inspection across selected endpoints, then a sequential burst probe (default 10 requests, 75 ms apart) against the first selected endpoint.
 
-| ID | Severity | Title | OWASP |
-|----|----------|-------|-------|
-| `ratelimit.no_429_on_burst` | medium | No rate limiting observed after burst | API4: Unrestricted Resource Consumption |
-| `ratelimit.no_headers` | low | No rate limit headers observed | API4: Unrestricted Resource Consumption |
-| `ratelimit.missing_retry_after` | low | 429 response missing Retry-After header | API4: Unrestricted Resource Consumption |
+| ID                              | Severity | Title                                   | OWASP                                   |
+| ------------------------------- | -------- | --------------------------------------- | --------------------------------------- |
+| `ratelimit.no_429_on_burst`     | medium   | No rate limiting observed after burst   | API4: Unrestricted Resource Consumption |
+| `ratelimit.no_headers`          | low      | No rate limit headers observed          | API4: Unrestricted Resource Consumption |
+| `ratelimit.missing_retry_after` | low      | 429 response missing Retry-After header | API4: Unrestricted Resource Consumption |
 
 ### Finding details
 
@@ -208,27 +208,27 @@ Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` 
 
 ## Summary table
 
-| Suite | ID | Severity |
-|-------|----|----------|
-| auth | `auth.jwt_alg_none` | critical |
-| injection | `injection.possible_command_injection` | critical |
-| auth | `auth.jwt_expired_accepted` | high |
-| cors | `cors.wildcard_with_credentials` | high |
-| injection | `injection.sql_error_disclosure` | high |
-| injection | `injection.nosql_error_disclosure` | high |
-| injection | `injection.possible_template_injection` | high |
-| auth | `auth.jwt_missing_exp` | medium |
-| auth | `auth.redirect_cross_origin` | medium |
-| auth | `auth.possible_bypass_probe` | medium |
-| cors | `cors.origin_reflection` | medium |
-| headers | `headers.missing_hsts` | medium |
-| inventory | `inventory.sensitive_endpoint_exposed` | medium |
-| inventory | `inventory.stale_version_responding` | medium |
-| ratelimit | `ratelimit.no_429_on_burst` | medium |
-| auth | `auth.jwt_long_ttl` | low |
-| auth | `auth.401_missing_www_authenticate` | low |
-| headers | `headers.missing_xcto` | low |
-| headers | `headers.missing_referrer_policy` | low |
-| inventory | `inventory.graphql_introspection_enabled` | low |
-| ratelimit | `ratelimit.no_headers` | low |
-| ratelimit | `ratelimit.missing_retry_after` | low |
+| Suite     | ID                                        | Severity |
+| --------- | ----------------------------------------- | -------- |
+| auth      | `auth.jwt_alg_none`                       | critical |
+| injection | `injection.possible_command_injection`    | critical |
+| auth      | `auth.jwt_expired_accepted`               | high     |
+| cors      | `cors.wildcard_with_credentials`          | high     |
+| injection | `injection.sql_error_disclosure`          | high     |
+| injection | `injection.nosql_error_disclosure`        | high     |
+| injection | `injection.possible_template_injection`   | high     |
+| auth      | `auth.jwt_missing_exp`                    | medium   |
+| auth      | `auth.redirect_cross_origin`              | medium   |
+| auth      | `auth.possible_bypass_probe`              | medium   |
+| cors      | `cors.origin_reflection`                  | medium   |
+| headers   | `headers.missing_hsts`                    | medium   |
+| inventory | `inventory.sensitive_endpoint_exposed`    | medium   |
+| inventory | `inventory.stale_version_responding`      | medium   |
+| ratelimit | `ratelimit.no_429_on_burst`               | medium   |
+| auth      | `auth.jwt_long_ttl`                       | low      |
+| auth      | `auth.401_missing_www_authenticate`       | low      |
+| headers   | `headers.missing_xcto`                    | low      |
+| headers   | `headers.missing_referrer_policy`         | low      |
+| inventory | `inventory.graphql_introspection_enabled` | low      |
+| ratelimit | `ratelimit.no_headers`                    | low      |
+| ratelimit | `ratelimit.missing_retry_after`           | low      |
