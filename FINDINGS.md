@@ -1,0 +1,234 @@
+# Sentinel Finding IDs — Source of Truth
+
+All finding IDs emitted by [Sentinel](./sentinel). Each entry is stable — downstream repos (anemone, weir) reference these IDs directly.
+
+Severities: `critical` › `high` › `medium` › `low` › `info`
+
+---
+
+## auth
+
+Checks HTTP auth semantics and basic auth enforcement behavior. Probes configurable `auth.probePaths` (default `["/"]`).
+
+| ID | Severity | Title | OWASP |
+|----|----------|-------|-------|
+| `auth.jwt_alg_none` | critical | JWT with alg:none detected in response | API2: Broken Authentication |
+| `auth.jwt_expired_accepted` | high | Server issued an already-expired JWT | API2: Broken Authentication |
+| `auth.jwt_missing_exp` | medium | JWT with no expiration claim (exp) detected in response | API2: Broken Authentication |
+| `auth.redirect_cross_origin` | medium | Cross-origin redirect observed on auth probe | API2: Broken Authentication |
+| `auth.possible_bypass_probe` | medium | Auth probe succeeded with and without credentials | API2: Broken Authentication |
+| `auth.jwt_long_ttl` | low | JWT with unusually long TTL detected in response | API2: Broken Authentication |
+| `auth.401_missing_www_authenticate` | low | 401 response missing WWW-Authenticate header | API2: Broken Authentication |
+
+### Finding details
+
+#### `auth.jwt_alg_none` — critical
+
+A JWT using the `alg:none` algorithm was found in a response. Tokens with `alg:none` carry no cryptographic signature; servers that accept them can be trivially bypassed. An attacker can forge arbitrary JWT claims — including elevated roles — and gain unauthorized access with no cryptographic barrier.  
+**Remediation:** Reject JWTs with `alg:none` server-side and enforce an explicit algorithm allowlist.
+
+#### `auth.jwt_expired_accepted` — high
+
+A JWT with an `exp` claim in the past was present in a successful (2xx) response. If the server issues or accepts expired tokens, expiry-based revocation is not enforced.  
+**Remediation:** Validate JWT expiry server-side and ensure issued tokens have `exp` set in the future.
+
+**Note**: Sentinel checks whether the issued token already has an expired exp claim, not whether the server accepts an expired token presented by a client. The latter requires an authenticated resend probe and is out of scope for Tier-0.
+
+#### `auth.jwt_missing_exp` — medium
+
+A JWT without an `exp` claim was found in a response. Non-expiring tokens cannot be automatically invalidated and remain valid indefinitely if leaked.  
+**Remediation:** Always include an `exp` claim in issued JWTs and reject tokens that lack one on the server side.
+
+#### `auth.redirect_cross_origin` — medium
+
+Auth probe returned a redirect to a different origin. Some HTTP clients forward `Authorization` headers on redirects without checking the destination origin, silently exfiltrating credentials.  
+**Remediation:** Avoid redirecting authenticated endpoints across origins, or ensure clients do not forward credentials across origins.
+
+#### `auth.possible_bypass_probe` — medium
+
+The configured auth probe endpoint returned success both with configured credentials and with credentials cleared, suggesting the endpoint may not enforce authentication.  
+**Remediation:** Verify the probe path points to a protected endpoint and ensure auth is enforced server-side. This is a heuristic — false positives occur when `auth.probePaths` includes unprotected routes.
+
+#### `auth.jwt_long_ttl` — low
+
+A JWT valid for more than 24 h was found in a response. Long-lived access tokens extend the window of opportunity if a token is compromised.  
+**Remediation:** Issue short-lived access tokens (ideally ≤1 h) and use refresh tokens for long-lived sessions.
+
+#### `auth.401_missing_www_authenticate` — low
+
+Endpoint returned 401 Unauthorized but did not include a `WWW-Authenticate` header, obscuring the intended auth scheme from spec-compliant clients.  
+**Remediation:** Return a `WWW-Authenticate` header on 401 responses (e.g. `Bearer realm=...`).
+
+---
+
+## cors
+
+Performs basic CORS misconfiguration checks by sending a GET with a synthetic `Origin` header to selected endpoints.
+
+| ID | Severity | Title | OWASP |
+|----|----------|-------|-------|
+| `cors.wildcard_with_credentials` | high | CORS allows credentials with wildcard origin | API8: Security Misconfiguration |
+| `cors.origin_reflection` | medium | CORS reflects arbitrary Origin | API8: Security Misconfiguration |
+
+### Finding details
+
+#### `cors.wildcard_with_credentials` — high
+
+`Access-Control-Allow-Origin` is `*` while `Access-Control-Allow-Credentials` is `true`. Any website can make credentialed cross-origin requests to this API on behalf of a logged-in user.  
+**Remediation:** Do not use wildcard ACAO with credentials. Reflect only trusted origins.
+
+#### `cors.origin_reflection` — medium
+
+The server reflected the `Origin` header value back in `Access-Control-Allow-Origin`. Combined with user credentials, this allows malicious sites to make authenticated API calls on behalf of a victim.  
+**Remediation:** Validate `Origin` against an explicit allowlist; avoid reflecting arbitrary origins.
+
+---
+
+## headers
+
+Checks for baseline HTTP security headers across selected endpoints. Multiple affected endpoints are collapsed into one finding per missing header.
+
+| ID | Severity | Title | OWASP |
+|----|----------|-------|-------|
+| `headers.missing_hsts` | medium | Missing Strict-Transport-Security (HSTS) | API8: Security Misconfiguration |
+| `headers.missing_xcto` | low | Missing X-Content-Type-Options | API8: Security Misconfiguration |
+| `headers.missing_referrer_policy` | low | Missing Referrer-Policy | API8: Security Misconfiguration |
+
+### Finding details
+
+#### `headers.missing_hsts` — medium
+
+`Strict-Transport-Security` header absent. Without HSTS, browsers may connect over plain HTTP on subsequent visits, enabling downgrade attacks that allow credential and session token interception on the local network.  
+**Remediation:** Add `Strict-Transport-Security: max-age=31536000; includeSubDomains` on all HTTPS responses.
+
+#### `headers.missing_xcto` — low
+
+`X-Content-Type-Options` header absent. MIME sniffing can cause browsers to interpret non-HTML API responses as executable content.  
+**Remediation:** Add `X-Content-Type-Options: nosniff`.
+
+#### `headers.missing_referrer_policy` — low
+
+`Referrer-Policy` header absent. Without it, sensitive data in URL paths — tokens, IDs, search terms — can be silently leaked to third-party domains via the `Referer` header.  
+**Remediation:** Add `Referrer-Policy: no-referrer` or `strict-origin-when-cross-origin`.
+
+---
+
+## injection
+
+Probes API query and body parameters for injection signals using error-string and output-based detection. Requires an OpenAPI spec (`--openapi`). One finding per parameter per category — no stacking. No time-based payloads.
+
+| ID | Severity | Title | OWASP |
+|----|----------|-------|-------|
+| `injection.possible_command_injection` | critical | Possible command injection detected | API3: Injection |
+| `injection.sql_error_disclosure` | high | SQL injection error string detected in response | API3: Injection |
+| `injection.nosql_error_disclosure` | high | NoSQL injection error string detected in response | API3: Injection |
+| `injection.possible_template_injection` | high | Possible template injection detected | API3: Injection |
+
+### Finding details
+
+#### `injection.possible_command_injection` — critical
+
+A command injection payload (`;echo sentinel9` / backtick form) was reflected in the response, suggesting server-side shell execution. This typically leads to full system compromise.  
+**Remediation:** Never pass user input directly to shell commands. Use allowlisted values or parameterized APIs that do not invoke the shell. Requires `command` in `injection.categories` config.
+
+#### `injection.sql_error_disclosure` — high
+
+A SQL injection payload produced a response containing SQL error strings (e.g. `sql syntax`, `ORA-`, `pg_query`). Confirms an exploitable injection point and reveals internal database details.  
+**Remediation:** Use parameterized queries or prepared statements. Never surface raw database errors to clients.
+
+#### `injection.nosql_error_disclosure` — high
+
+A NoSQL injection payload produced a response containing NoSQL error strings (e.g. `mongo`, `$where`, `bson`). Confirms an exploitable injection point and reveals internal database details.  
+**Remediation:** Sanitize and validate all user input. Never expose raw database errors to clients.
+
+#### `injection.possible_template_injection` — high
+
+A template expression payload (`{{7*7}}`, `${7*7}`, `<%= 7*7 %>`) produced output containing `49`, consistent with server-side expression evaluation. Can allow arbitrary code execution via the template engine.  
+**Remediation:** Sanitize all user input before passing it to template engines. Use sandboxed evaluation or disable expression processing.
+
+---
+
+## inventory
+
+Probes common API paths for sensitive endpoint exposure, GraphQL introspection, and stale version endpoints. Maps to OWASP API9. Multiple paths triggering the same class of issue are collapsed into one finding.
+
+| ID | Severity | Title | OWASP |
+|----|----------|-------|-------|
+| `inventory.sensitive_endpoint_exposed` | medium | Sensitive endpoint(s) responding with 2xx | API9: Improper Inventory Management |
+| `inventory.stale_version_responding` | medium | Deprecated API version endpoint is responding | API9: Improper Inventory Management |
+| `inventory.graphql_introspection_enabled` | low | GraphQL introspection is enabled | API9: Improper Inventory Management |
+
+### Finding details
+
+#### `inventory.sensitive_endpoint_exposed` — medium
+
+One or more of `/swagger`, `/openapi.json`, `/api-docs`, `/graphql`, `/debug`, `/actuator`, `/metrics` returned a 2xx response. Debug, admin, and documentation endpoints reveal internal API structure that attackers use to map attack surface.  
+**Remediation:** Disable or restrict access to these endpoints in production. If public docs are intentional, verify the spec does not expose sensitive implementation details.
+
+#### `inventory.stale_version_responding` — medium
+
+The API spec declares a current version (e.g. `v2`) but an older version prefix (`/v1/`, `/api/v1/`) is still returning success responses. Old versions often lack security patches present in the current version.  
+**Remediation:** Decommission or block deprecated version endpoints. If parallel versioning is intentional, ensure older versions receive equivalent security updates. Only emitted when an OpenAPI spec is loaded.
+
+#### `inventory.graphql_introspection_enabled` — low
+
+The `/graphql` endpoint responded to an introspection query and returned schema data. Introspection gives attackers a complete, machine-readable map of every query, mutation, type, and field.  
+**Remediation:** Disable introspection in production (e.g. `introspection: false` in Apollo Server). Expose schema documentation through controlled channels instead.
+
+---
+
+## ratelimit
+
+Checks for HTTP rate limiting via header inspection across selected endpoints, then a sequential burst probe (default 10 requests, 75 ms apart) against the first selected endpoint.
+
+| ID | Severity | Title | OWASP |
+|----|----------|-------|-------|
+| `ratelimit.no_429_on_burst` | medium | No rate limiting observed after burst | API4: Unrestricted Resource Consumption |
+| `ratelimit.no_headers` | low | No rate limit headers observed | API4: Unrestricted Resource Consumption |
+| `ratelimit.missing_retry_after` | low | 429 response missing Retry-After header | API4: Unrestricted Resource Consumption |
+
+### Finding details
+
+#### `ratelimit.no_429_on_burst` — medium
+
+A burst of sequential requests completed without triggering a 429 or returning rate-limit headers. HTTP-layer rate limiting may not be enforced on the probed endpoint. Unthrottled endpoints are vulnerable to brute-force, credential stuffing, scraping, and denial-of-service. Emitted only when no rate-limit headers were seen during the burst either.  
+**Remediation:** Implement rate limiting at the API gateway or application layer. Return 429 when limits are exceeded and include standard rate-limit headers.
+
+#### `ratelimit.no_headers` — low
+
+None of the probed endpoints returned standard rate-limit headers (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, etc.). Rate limiting may still be enforced at the infrastructure level but is not communicated to clients.  
+**Remediation:** Return standard rate-limit headers so clients can observe and adapt to quota constraints before being throttled.
+
+#### `ratelimit.missing_retry_after` — low
+
+Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` header. Clients with no retry guidance typically resort to aggressive polling, worsening load on an already-throttled endpoint.  
+**Remediation:** Include a `Retry-After` header on 429 responses — either a delay in seconds or an HTTP-date.
+
+---
+
+## Summary table
+
+| Suite | ID | Severity |
+|-------|----|----------|
+| auth | `auth.jwt_alg_none` | critical |
+| injection | `injection.possible_command_injection` | critical |
+| auth | `auth.jwt_expired_accepted` | high |
+| cors | `cors.wildcard_with_credentials` | high |
+| injection | `injection.sql_error_disclosure` | high |
+| injection | `injection.nosql_error_disclosure` | high |
+| injection | `injection.possible_template_injection` | high |
+| auth | `auth.jwt_missing_exp` | medium |
+| auth | `auth.redirect_cross_origin` | medium |
+| auth | `auth.possible_bypass_probe` | medium |
+| cors | `cors.origin_reflection` | medium |
+| headers | `headers.missing_hsts` | medium |
+| inventory | `inventory.sensitive_endpoint_exposed` | medium |
+| inventory | `inventory.stale_version_responding` | medium |
+| ratelimit | `ratelimit.no_429_on_burst` | medium |
+| auth | `auth.jwt_long_ttl` | low |
+| auth | `auth.401_missing_www_authenticate` | low |
+| headers | `headers.missing_xcto` | low |
+| headers | `headers.missing_referrer_policy` | low |
+| inventory | `inventory.graphql_introspection_enabled` | low |
+| ratelimit | `ratelimit.no_headers` | low |
+| ratelimit | `ratelimit.missing_retry_after` | low |
