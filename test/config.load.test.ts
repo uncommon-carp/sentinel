@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { formatZodIssue, loadConfig } from '../src/config/load.js';
+import { formatZodIssue, loadConfig, sanitizeConfigForReport } from '../src/config/load.js';
 import { SentinelConfigSchema } from '../src/config/schema.js';
 import type { ZodIssue } from 'zod';
 
@@ -19,11 +19,13 @@ describe('config/load', () => {
     savedEnv = {
       TARGET_URL: process.env.TARGET_URL,
       RESULTS_BUCKET: process.env.RESULTS_BUCKET,
-      RUN_ID: process.env.RUN_ID
+      RUN_ID: process.env.RUN_ID,
+      AUTH_TOKEN_URL: process.env.AUTH_TOKEN_URL
     };
     delete process.env.TARGET_URL;
     delete process.env.RESULTS_BUCKET;
     delete process.env.RUN_ID;
+    delete process.env.AUTH_TOKEN_URL;
   });
 
   afterEach(() => {
@@ -235,5 +237,56 @@ describe('config/load', () => {
     const { pipeline, pipelineWarning } = await loadConfig({});
     expect(pipeline).toBeUndefined();
     expect(pipelineWarning).toBeUndefined();
+  });
+
+  it('AUTH_TOKEN_URL sets auth.tokenUrl', async () => {
+    process.env.TARGET_URL = 'http://localhost:3000';
+    process.env.AUTH_TOKEN_URL = 'http://localhost:3000/api/v2/auth';
+    const { config } = await loadConfig({});
+    expect(config.auth.tokenUrl).toBe('http://localhost:3000/api/v2/auth');
+    // defaults for the other token fields still apply
+    expect(config.auth.tokenMethod).toBe('GET');
+    expect(config.auth.tokenField).toBe('token');
+  });
+
+  it('AUTH_TOKEN_URL env wins over file auth.tokenUrl', async () => {
+    const dir = tmpDir();
+    const configPath = path.join(dir, 'sentinel.config.json');
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        target: { baseUrl: 'http://localhost:3000' },
+        auth: { tokenUrl: 'http://from-file.example/token' }
+      }),
+      'utf-8'
+    );
+    const oldCwd = process.cwd();
+    process.chdir(dir);
+    try {
+      process.env.AUTH_TOKEN_URL = 'http://from-env.example/token';
+      const { config } = await loadConfig({ configPath: 'sentinel.config.json' });
+      expect(config.auth.tokenUrl).toBe('http://from-env.example/token');
+    } finally {
+      process.chdir(oldCwd);
+    }
+  });
+
+  it('sanitizes token-endpoint request secrets in the report config', () => {
+    const parsed = SentinelConfigSchema.parse({
+      target: { baseUrl: 'http://localhost:3000' },
+      auth: {
+        type: 'bearer',
+        bearerToken: 'fetched-jwt',
+        tokenUrl: 'http://localhost:3000/api/v2/auth',
+        tokenRequestHeaders: { authorization: 'Basic c2VjcmV0' },
+        tokenRequestBody: 'client_secret=hunter2'
+      }
+    });
+    const sanitized = sanitizeConfigForReport(parsed) as { auth: Record<string, unknown> };
+    expect(sanitized.auth.bearerToken).toBe('***');
+    expect(sanitized.auth.tokenRequestBody).toBe('***');
+    expect(sanitized.auth.tokenRequestHeaders).toEqual({ authorization: '***' });
+    // tokenUrl is not a secret — stays visible
+    expect(sanitized.auth.tokenUrl).toBe('http://localhost:3000/api/v2/auth');
   });
 });

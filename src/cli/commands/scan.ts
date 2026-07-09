@@ -1,7 +1,8 @@
-import { loadConfig } from '../../config/load.js';
+import { loadConfig, sanitizeConfigForReport } from '../../config/load.js';
 import { uploadReportToS3 } from '../../reporters/s3.js';
 import { createLogger } from '../../core/logger.js';
 import { HttpClient } from '../../http/client.js';
+import { fetchAuthToken } from '../../http/token.js';
 import { buildSuites } from '../../suites/index.js';
 import { jsonReporter } from '../../reporters/json.js';
 import { markdownReporter } from '../../reporters/markdown.js';
@@ -68,56 +69,84 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     logger.warn(pipelineWarning, { event: 'sentinel.pipeline.partial' });
   }
 
+  // Dynamic token auth (Tier-1): if a tokenUrl is configured, fetch a token
+  // once and resolve it into a bearer credential the rest of the scan uses.
+  // A failure here is fatal by design — the caller asked for authenticated
+  // scanning, so scanning unauthenticated would produce misleading findings.
+  // The thrown error propagates to cli/index.ts, which exits 3.
+  let scanConfig = config;
+  let sanitizedConfig = sanitized;
+  if (config.auth.tokenUrl) {
+    const token = await fetchAuthToken(
+      {
+        tokenUrl: config.auth.tokenUrl,
+        method: config.auth.tokenMethod,
+        field: config.auth.tokenField,
+        ...(config.auth.tokenRequestHeaders ? { headers: config.auth.tokenRequestHeaders } : {}),
+        ...(config.auth.tokenRequestBody ? { body: config.auth.tokenRequestBody } : {}),
+        timeoutMs: config.active.timeoutMs
+      },
+      logger
+    );
+    scanConfig = { ...config, auth: { ...config.auth, type: 'bearer', bearerToken: token } };
+    sanitizedConfig = sanitizeConfigForReport(scanConfig);
+    logger.debug('Resolved auth token from tokenUrl', { event: 'auth.token.resolved' });
+  }
+
   const http = new HttpClient(
     {
-      baseUrl: config.target.baseUrl,
-      timeoutMs: config.active.timeoutMs,
+      baseUrl: scanConfig.target.baseUrl,
+      timeoutMs: scanConfig.active.timeoutMs,
       defaultHeaders: {
         'user-agent': `sentinel/${opts.version}`,
         accept: 'application/json,*/*'
       },
-      authHeader: () => buildAuthHeader(config.auth),
-      authType: config.auth.type
+      authHeader: () => buildAuthHeader(scanConfig.auth),
+      authType: scanConfig.auth.type
     },
     logger
   );
 
-  const suites = buildSuites(config.suites);
+  const suites = buildSuites(scanConfig.suites);
 
   const reporters = [
-    ...(config.output.json ? [jsonReporter()] : []),
-    ...(config.output.markdown ? [markdownReporter()] : [])
+    ...(scanConfig.output.json ? [jsonReporter()] : []),
+    ...(scanConfig.output.markdown ? [markdownReporter()] : [])
   ];
 
-  const outputDir = opts.out ?? config.output.dir;
+  const outputDir = opts.out ?? scanConfig.output.dir;
 
   let api: LoadedApiSpec | undefined;
-  if (config.target.openapi) {
+  if (scanConfig.target.openapi) {
     try {
-      api = await loadOpenApi(config.target.openapi);
+      api = await loadOpenApi(scanConfig.target.openapi);
       logger.debug('Loaded OpenAPI spec', {
         event: 'sentinel.openapi.loaded',
         source: api.source,
         endpoints: api.endpoints.length
       });
     } catch (err) {
-      logger.warn(classifyOpenApiError(config.target.openapi, err), {
+      logger.warn(classifyOpenApiError(scanConfig.target.openapi, err), {
         event: 'sentinel.openapi.load_failed'
       });
     }
   }
 
-  const selectedEndpoints = selectEndpoints({ config, logger, ...(api ? { api } : {}) });
+  const selectedEndpoints = selectEndpoints({
+    config: scanConfig,
+    logger,
+    ...(api ? { api } : {})
+  });
 
   const result = await runScan({
     suites,
     reporters,
-    ctx: { http, config, logger, selectedEndpoints, ...(api ? { api } : {}) },
-    sanitizedConfig: sanitized,
+    ctx: { http, config: scanConfig, logger, selectedEndpoints, ...(api ? { api } : {}) },
+    sanitizedConfig,
     outputDir,
     meta: {
       startedAt: new Date().toISOString(),
-      targetBaseUrl: config.target.baseUrl,
+      targetBaseUrl: scanConfig.target.baseUrl,
       version: opts.version
     }
   });

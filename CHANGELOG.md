@@ -6,6 +6,19 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+### Added
+
+- **Dynamic token auth (`auth.tokenUrl`)**: Sentinel can fetch a bearer token from an endpoint before scanning and use it for all authenticated requests, instead of requiring a static `bearerToken`. Configurable via `tokenMethod` (`GET`/`POST`, default `GET`), `tokenField` (JSON field holding the token, default `token`), and optional `tokenRequestHeaders` / `tokenRequestBody` for token endpoints that need a POST with a client secret. Enables Tier-1 authenticated scanning without credentials leaving the scanner.
+- **`AUTH_TOKEN_URL` env var**: Maps to `auth.tokenUrl` (env wins over config file), mirroring `TARGET_URL`. This is how the CI pipeline supplies a target's token endpoint without a config file, keeping the orchestrator credential-free.
+
+### Security
+
+- Token-endpoint request material (`tokenRequestHeaders`, `tokenRequestBody`) and the resolved bearer token are redacted in the report's sanitized config. `tokenUrl` itself is left visible (it is not a secret).
+
+### Changed
+
+- A configured `tokenUrl` that fails to resolve (unreachable endpoint, non-2xx response, or a missing/non-string token field) is a **fatal pre-scan error (exit code 3)**, rather than silently scanning unauthenticated — an unauthenticated scan of an endpoint that was supposed to be authenticated produces misleading auth findings.
+
 ## [0.4.0] — 2026-06-27
 
 ### Added

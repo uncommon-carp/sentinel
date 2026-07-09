@@ -226,8 +226,33 @@ Example:
 | `basicPass`       | Password for `basic` auth                                                             |
 | `apiKeyHeader`    | Header name for `apiKey` auth (e.g. `x-api-key`)                                      |
 | `apiKeyValue`     | Header value for `apiKey` auth                                                        |
+| `tokenUrl`             | Endpoint to fetch a token from before scanning; the token is used as a bearer credential for all requests (Tier-1 dynamic auth). Overrides a statically-set `type`. |
+| `tokenMethod`          | HTTP method for the token fetch: `GET` or `POST` (default: `GET`)                      |
+| `tokenField`           | JSON field in the token response holding the token (default: `token`)                  |
+| `tokenRequestHeaders`  | Static headers sent on the token fetch (e.g. a `content-type`, or a client secret). Redacted in reports. |
+| `tokenRequestBody`     | Raw request body sent on the token fetch (for `POST` token endpoints). Redacted in reports. |
 | `probePaths`      | Endpoints used by the auth suite for probing (default: `["/"]`)                       |
 | `compareUnauthed` | Compare authed vs. unauthed responses to detect missing enforcement (default: `true`) |
+
+The `AUTH_TOKEN_URL` environment variable maps to `auth.tokenUrl` (this is how the CI pipeline — Weir — supplies a target's token endpoint without Sentinel needing a config file). A fetch failure (unreachable endpoint, non-2xx, or a missing/non-string token field) is fatal: the scan exits with code `3` rather than silently scanning unauthenticated.
+
+Dynamic-token example (fetch a bearer token from a login endpoint, then scan):
+
+```json
+{
+  "target": { "baseUrl": "https://api.example.com" },
+  "auth": {
+    "tokenUrl": "https://api.example.com/auth/login",
+    "tokenMethod": "POST",
+    "tokenField": "access_token",
+    "tokenRequestHeaders": { "content-type": "application/json" },
+    "tokenRequestBody": "${TOKEN_BODY}",
+    "probePaths": ["/me"]
+  }
+}
+```
+
+Note the whole-string `${VAR}` interpolation rule (above) applies to `tokenRequestBody` and `tokenRequestHeaders` values too: put the entire body in one env var (`TOKEN_BODY='{"user":"scanner","password":"..."}'`), not a partial placeholder like `"{\"password\":\"${SCAN_PASSWORD}\"}"` — that would be sent literally.
 
 ### Scope
 

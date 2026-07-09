@@ -9,6 +9,15 @@ const AuthSchema = z
     apiKeyHeader: z.string().optional(),
     apiKeyValue: z.string().optional(),
 
+    // Dynamic token auth (Tier-1). When tokenUrl is set, Sentinel fetches a
+    // token before scanning and uses it as a bearer credential (see
+    // cli/commands/scan.ts). Overrides any statically-configured `type`.
+    tokenUrl: z.string().url().optional(),
+    tokenMethod: z.enum(['GET', 'POST']).default('GET'),
+    tokenField: z.string().default('token'),
+    tokenRequestHeaders: z.record(z.string()).optional(),
+    tokenRequestBody: z.string().optional(),
+
     probePaths: z.array(z.string()).default(['/']),
     compareUnauthed: z.boolean().default(true)
   })
