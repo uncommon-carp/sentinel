@@ -70,4 +70,23 @@ describe('fetchAuthToken', () => {
     mockFetchQueue([{ status: 200, bodyText: JSON.stringify({ token: 12345 }) }]);
     await expect(fetchAuthToken(baseArgs(), logger)).rejects.toThrow(/no string field "token"/);
   });
+
+  it('wraps a network error with the tokenUrl for context', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockRejectedValue(new Error('fetch failed')) as unknown as typeof fetch
+    );
+    await expect(fetchAuthToken(baseArgs(), logger)).rejects.toThrow(
+      'Failed to fetch auth token from http://localhost:3000/api/v2/auth: fetch failed'
+    );
+  });
+
+  it('reports a timeout (AbortError) with the tokenUrl and duration', async () => {
+    const abortErr = new Error('The operation was aborted');
+    abortErr.name = 'AbortError';
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortErr) as unknown as typeof fetch);
+    await expect(fetchAuthToken(baseArgs({ timeoutMs: 1234 }), logger)).rejects.toThrow(
+      'Failed to fetch auth token from http://localhost:3000/api/v2/auth: request timed out after 1234ms'
+    );
+  });
 });

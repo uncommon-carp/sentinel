@@ -246,11 +246,13 @@ Dynamic-token example (fetch a bearer token from a login endpoint, then scan):
     "tokenMethod": "POST",
     "tokenField": "access_token",
     "tokenRequestHeaders": { "content-type": "application/json" },
-    "tokenRequestBody": "{\"user\":\"scanner\",\"password\":\"${SCAN_PASSWORD}\"}",
+    "tokenRequestBody": "${TOKEN_BODY}",
     "probePaths": ["/me"]
   }
 }
 ```
+
+Note the whole-string `${VAR}` interpolation rule (above) applies to `tokenRequestBody` and `tokenRequestHeaders` values too: put the entire body in one env var (`TOKEN_BODY='{"user":"scanner","password":"..."}'`), not a partial placeholder like `"{\"password\":\"${SCAN_PASSWORD}\"}"` — that would be sent literally.
 
 ### Scope
 

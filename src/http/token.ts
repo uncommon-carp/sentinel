@@ -44,8 +44,23 @@ export async function fetchAuthToken(args: FetchAuthTokenArgs, logger: Logger): 
       ...(body !== undefined ? { body } : {})
     };
 
-    const res = await fetch(tokenUrl, init);
-    const bodyText = await res.text();
+    let res: Response;
+    let bodyText: string;
+    try {
+      res = await fetch(tokenUrl, init);
+      bodyText = await res.text();
+    } catch (err) {
+      // fetch()/AbortController throw before the checks below, with messages
+      // ("The operation was aborted", "fetch failed") that mention neither the
+      // URL nor that this was the auth-token step — unhelpful in CI logs.
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error(
+          `Failed to fetch auth token from ${tokenUrl}: request timed out after ${timeoutMs}ms`
+        );
+      }
+      const reason = err instanceof Error ? err.message : String(err);
+      throw new Error(`Failed to fetch auth token from ${tokenUrl}: ${reason}`);
+    }
 
     if (res.status < 200 || res.status >= 300) {
       throw new Error(`Failed to fetch auth token from ${tokenUrl}: HTTP ${res.status}`);
