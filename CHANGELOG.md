@@ -10,6 +10,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 - **Dynamic token auth (`auth.tokenUrl`)**: Sentinel can fetch a bearer token from an endpoint before scanning and use it for all authenticated requests, instead of requiring a static `bearerToken`. Configurable via `tokenMethod` (`GET`/`POST`, default `GET`), `tokenField` (JSON field holding the token, default `token`), and optional `tokenRequestHeaders` / `tokenRequestBody` for token endpoints that need a POST with a client secret. Enables Tier-1 authenticated scanning without credentials leaving the scanner.
 - **`AUTH_TOKEN_URL` env var**: Maps to `auth.tokenUrl` (env wins over config file), mirroring `TARGET_URL`. This is how the CI pipeline supplies a target's token endpoint without a config file, keeping the orchestrator credential-free.
+- **`auth.invalid_token_accepted` finding (Tier-1)**: The auth suite's enforcement probe is now three-way — it compares a protected endpoint's response to a valid credential, a deliberately invalid one (a token with a broken signature), and no credential. When the endpoint rejects the no-credential request but accepts the invalid one, it checks token presence rather than validity, and this high-severity finding is emitted. Unlike `auth.possible_bypass_probe` it is definitive, not heuristic — a genuinely public route would also serve the no-credential request. Registered in `FINDINGS.md`.
 
 ### Security
 
@@ -18,6 +19,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 ### Changed
 
 - A configured `tokenUrl` that fails to resolve (unreachable endpoint, non-2xx response, or a missing/non-string token field) is a **fatal pre-scan error (exit code 3)**, rather than silently scanning unauthenticated — an unauthenticated scan of an endpoint that was supposed to be authenticated produces misleading auth findings.
+- **`auth.possible_bypass_probe` evidence** now includes `invalidStatus` alongside `authedStatus`/`unauthedStatus`, reflecting the new three-way enforcement probe. The finding's trigger (success both with and without any credential) is unchanged; the fully-open case is reported here and not double-counted as `auth.invalid_token_accepted`.
 
 ## [0.4.0] — 2026-06-27
 
