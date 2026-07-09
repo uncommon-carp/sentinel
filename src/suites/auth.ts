@@ -181,11 +181,20 @@ export function authSuite(): Suite {
       // `invalidHeaders` sends a deliberately invalid one.
       const clearedHeaders: Record<string, string> = {};
       const invalidHeaders: Record<string, string> = {};
-      if (ctx.config.auth.type === 'bearer' || ctx.config.auth.type === 'basic') {
+      // The invalid credential must use the *same scheme* as the real one, so a
+      // server that rejects it does so because the credential is invalid — not
+      // because the auth scheme is wrong (which would be a false negative on the
+      // exact case invalid_token_accepted is meant to catch).
+      if (ctx.config.auth.type === 'bearer') {
         clearedHeaders['authorization'] = '';
         invalidHeaders['authorization'] = `Bearer ${corruptBearer(
           ctx.config.auth.bearerToken ?? 'x'
         )}`;
+      }
+      if (ctx.config.auth.type === 'basic') {
+        clearedHeaders['authorization'] = '';
+        const bogus = Buffer.from('sentinel-invalid:sentinel-invalid').toString('base64');
+        invalidHeaders['authorization'] = `Basic ${bogus}`;
       }
       if (ctx.config.auth.type === 'apiKey' && ctx.config.auth.apiKeyHeader) {
         clearedHeaders[ctx.config.auth.apiKeyHeader] = '';

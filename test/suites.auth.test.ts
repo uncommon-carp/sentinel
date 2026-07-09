@@ -67,6 +67,28 @@ describe('auth suite', () => {
     expect(findings.find((f) => f.id === 'auth.possible_bypass_probe')).toBeUndefined();
   });
 
+  it('emits invalid_token_accepted for basic auth using a Basic-scheme invalid credential', async () => {
+    // Same verdict as the bearer case, but the invalid probe must carry a
+    // Basic-scheme header — a Bearer header would be rejected for the wrong
+    // reason on a server that gates on the Basic scheme (false negative).
+    const fetchMock = mockFetchQueue([
+      { status: 200, bodyText: 'ok' },
+      { status: 200, bodyText: 'ok' },
+      { status: 401, bodyText: 'unauthorized' }
+    ]);
+
+    const findings = await authSuite().run(makeSuiteCtx('https://api.example.com', 'basic'));
+
+    const finding = findings.find((f) => f.id === 'auth.invalid_token_accepted');
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe('high');
+
+    // The invalid probe (2nd request) must send a Basic-scheme authorization header.
+    const invalidReqInit = fetchMock.mock.calls[1]?.[1] as RequestInit;
+    const invalidAuth = (invalidReqInit.headers as Record<string, string>)['authorization'];
+    expect(invalidAuth).toMatch(/^Basic /);
+  });
+
   it('emits no bypass finding when auth is properly enforced', async () => {
     // valid ok, invalid rejected, none rejected — enforcement is real.
     mockFetchQueue([
