@@ -17,11 +17,19 @@ function readJsonIfExists(p: string): unknown | undefined {
   return JSON.parse(raw);
 }
 
-function sanitizeConfigForReport(cfg: SentinelConfig): Record<string, unknown> {
+export function sanitizeConfigForReport(cfg: SentinelConfig): Record<string, unknown> {
   const clone = structuredClone(cfg);
   if (clone.auth.bearerToken) clone.auth.bearerToken = '***';
   if (clone.auth.basicPass) clone.auth.basicPass = '***';
   if (clone.auth.apiKeyValue) clone.auth.apiKeyValue = '***';
+  // Token-endpoint request material can carry secrets (e.g. a client secret
+  // interpolated via ${VAR}). tokenUrl itself is just a URL — leave it visible.
+  if (clone.auth.tokenRequestBody) clone.auth.tokenRequestBody = '***';
+  if (clone.auth.tokenRequestHeaders) {
+    clone.auth.tokenRequestHeaders = Object.fromEntries(
+      Object.keys(clone.auth.tokenRequestHeaders).map((k) => [k, '***'])
+    );
+  }
   return clone as Record<string, unknown>;
 }
 
@@ -72,6 +80,7 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
   const envTargetUrl = process.env.TARGET_URL;
   const envResultsBucket = process.env.RESULTS_BUCKET;
   const envRunId = process.env.RUN_ID;
+  const envAuthTokenUrl = process.env.AUTH_TOKEN_URL;
 
   const merged = {
     ...fileConfig,
@@ -83,6 +92,20 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
       ...(args.baseUrl ? { baseUrl: args.baseUrl } : {}),
       ...(args.openapi ? { openapi: args.openapi } : {})
     },
+    // Only construct auth from file/env when either is present, so behavior is
+    // unchanged when no auth is configured anywhere. AUTH_TOKEN_URL (the Weir
+    // pipeline contract) maps to auth.tokenUrl, mirroring TARGET_URL→baseUrl;
+    // env wins over file, consistent with target.
+    ...(fileConfig.auth || envAuthTokenUrl
+      ? {
+          auth: {
+            ...(typeof fileConfig.auth === 'object' && fileConfig.auth !== null
+              ? (fileConfig.auth as Record<string, unknown>)
+              : {}),
+            ...(envAuthTokenUrl ? { tokenUrl: envAuthTokenUrl } : {})
+          }
+        }
+      : {}),
     ...(typeof args.verbose === 'boolean' ? { verbose: args.verbose } : {})
   };
 
