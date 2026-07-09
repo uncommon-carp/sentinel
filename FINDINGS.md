@@ -14,6 +14,7 @@ Checks HTTP auth semantics and basic auth enforcement behavior. Probes configura
 | ----------------------------------- | -------- | ------------------------------------------------------- | --------------------------- |
 | `auth.jwt_alg_none`                 | critical | JWT with alg:none detected in response                  | API2: Broken Authentication |
 | `auth.invalid_token_accepted`       | high     | Protected endpoint accepted an invalid token            | API2: Broken Authentication |
+| `auth.jwt_weak_signature`           | high     | JWT with a weak or stub signature detected in response  | API2: Broken Authentication |
 | `auth.jwt_expired_accepted`         | high     | Server issued an already-expired JWT                    | API2: Broken Authentication |
 | `auth.jwt_missing_exp`              | medium   | JWT with no expiration claim (exp) detected in response | API2: Broken Authentication |
 | `auth.redirect_cross_origin`        | medium   | Cross-origin redirect observed on auth probe            | API2: Broken Authentication |
@@ -32,6 +33,11 @@ A JWT using the `alg:none` algorithm was found in a response. Tokens with `alg:n
 
 A protected probe path returned success for a structurally invalid credential (a token with a broken signature) while rejecting the request with no credential at all. The endpoint checks that a token is present but never validates it, so any token-shaped value is accepted — a full authentication bypass with a trivially forgeable credential. Unlike `auth.possible_bypass_probe` this is definitive rather than heuristic: a genuinely public route would also serve the no-credential request, whereas here the no-credential request is rejected.  
 **Remediation:** Validate the token server-side (signature, issuer, and expiry) on every protected endpoint, not just the presence of an `Authorization` header. Requires a configured credential (`auth.tokenUrl` or a static `bearer`/`basic`/`apiKey`) so the probe has a valid token to contrast against.
+
+#### `auth.jwt_weak_signature` — high
+
+A JWT whose algorithm is not `none` but whose signature decodes to fewer than 32 bytes — the minimum any standard JWS algorithm (HS256) produces — was found in a response. Such a signature is consistent with a stub or placeholder rather than a real cryptographic one, so the token is effectively unsigned: an attacker who knows or guesses the placeholder can forge arbitrary claims even though the algorithm is not `none`.  
+**Remediation:** Sign tokens with a real secret or key using a standard algorithm, never a constant/placeholder signature. Enforce an algorithm allowlist and verify signatures server-side.
 
 #### `auth.jwt_expired_accepted` — high
 
@@ -219,6 +225,7 @@ Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` 
 | auth      | `auth.jwt_alg_none`                       | critical |
 | injection | `injection.possible_command_injection`    | critical |
 | auth      | `auth.invalid_token_accepted`             | high     |
+| auth      | `auth.jwt_weak_signature`                 | high     |
 | auth      | `auth.jwt_expired_accepted`               | high     |
 | cors      | `cors.wildcard_with_credentials`          | high     |
 | injection | `injection.sql_error_disclosure`          | high     |

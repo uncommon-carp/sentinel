@@ -3,9 +3,15 @@ import { authSuite } from '../src/suites/auth.js';
 import { mockFetchQueue } from './helpers/fetchMock.js';
 import { makeSuiteCtx } from './helpers/makeConfig.js';
 
-function makeJwt(header: Record<string, unknown>, payload: Record<string, unknown>): string {
+// Default signature is a realistic 32-byte value (43 base64url chars) so tokens
+// don't incidentally trip auth.jwt_weak_signature; pass a shorter one to test it.
+function makeJwt(
+  header: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  signature: string = 'x'.repeat(43)
+): string {
   const b64u = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  return `${b64u(header)}.${b64u(payload)}.fakesignaturepadding`;
+  return `${b64u(header)}.${b64u(payload)}.${signature}`;
 }
 
 describe('auth suite', () => {
@@ -130,6 +136,39 @@ describe('auth suite', () => {
     expect(finding?.severity).toBe('critical');
     expect(finding?.suite).toBe('auth');
     expect(finding?.tags).toContain('jwt');
+  });
+
+  it('emits auth.jwt_weak_signature when a non-none JWT has a trivially short signature', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    // Anemone's actual stub: base64url('sig') → 'c2ln', decodes to 3 bytes.
+    const stubSig = Buffer.from('sig').toString('base64url');
+    const jwt = makeJwt(
+      { alg: 'HS256', typ: 'JWT' },
+      { sub: '1', iat: now, exp: now + 3600 },
+      stubSig
+    );
+    mockFetchQueue([{ status: 200, bodyText: JSON.stringify({ token: jwt }) }]);
+
+    const findings = await authSuite().run(makeSuiteCtx());
+
+    const finding = findings.find((f) => f.id === 'auth.jwt_weak_signature');
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe('high');
+    expect(finding?.suite).toBe('auth');
+    expect(finding?.tags).toContain('jwt');
+    expect(finding?.evidence).toMatchObject({ signatureBytes: 3, alg: 'hs256' });
+    // alg is not "none", so jwt_alg_none must not fire.
+    expect(findings.find((f) => f.id === 'auth.jwt_alg_none')).toBeUndefined();
+  });
+
+  it('does not emit auth.jwt_weak_signature for a normal-length signature', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const jwt = makeJwt({ alg: 'HS256', typ: 'JWT' }, { sub: '1', iat: now, exp: now + 3600 });
+    mockFetchQueue([{ status: 200, bodyText: JSON.stringify({ token: jwt }) }]);
+
+    const findings = await authSuite().run(makeSuiteCtx());
+
+    expect(findings.find((f) => f.id === 'auth.jwt_weak_signature')).toBeUndefined();
   });
 
   it('emits auth.jwt_missing_exp when a response body contains a JWT with no exp claim', async () => {

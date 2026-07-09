@@ -6,7 +6,8 @@
  * - Redirect safety: cross-origin redirects on an auth probe can leak credentials
  * - Enforcement heuristic: compares authed vs. unauthed responses on probePath
  * - JWT inspection: if any response includes a JWT (headers or body), decode and check
- *   for alg:none, missing exp, already-expired issuance, and overly long TTL (>24h)
+ *   for alg:none, weak/stub signatures, missing exp, already-expired issuance, and
+ *   overly long TTL (>24h)
  *
  * Heuristic by design — false positives are possible if probePaths are not protected.
  *
@@ -19,6 +20,11 @@ import type { Suite, Finding, SelectedEndpoint } from '../core/types.js';
 import type { HttpResponse } from '../http/client.js';
 
 const JWT_TTL_LIMIT = 86400;
+// HMAC-SHA256, the weakest standard JWS algorithm, produces a 32-byte (256-bit)
+// signature; every registered HS/RS/ES algorithm is at least this long. A
+// shorter signature on a non-"none" token cannot be a real one — it is a stub
+// or placeholder.
+const MIN_SIG_BYTES = 32;
 const JWT_RE = /[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*/g;
 
 function extractJwts(res: HttpResponse): string[] {
@@ -77,6 +83,35 @@ function inspectJwts(tokens: string[], res: HttpResponse): Finding[] {
         suite: 'auth',
         tags: ['auth', 'jwt']
       });
+    }
+
+    const alg = typeof header.alg === 'string' ? header.alg.toLowerCase() : null;
+    const rawSig = token.split('.')[2] ?? '';
+    if (alg !== null && alg !== 'none' && rawSig.length > 0) {
+      // alg:none is already covered by jwt_alg_none above — don't double-flag.
+      const sigBytes = Buffer.from(rawSig, 'base64url').length;
+      if (sigBytes > 0 && sigBytes < MIN_SIG_BYTES) {
+        findings.push({
+          id: 'auth.jwt_weak_signature',
+          title: 'JWT with a weak or stub signature detected in response',
+          severity: 'high',
+          description: `A JWT signature that decodes to only ${sigBytes} byte(s) was found in a response — far shorter than the ${MIN_SIG_BYTES}-byte minimum any standard algorithm (HS256) produces. This is consistent with a placeholder or stub signature rather than a real cryptographic one.`,
+          whyItMatters:
+            'A token signed with a stub or trivially short signature is effectively unsigned — an attacker who knows or guesses the placeholder can forge arbitrary claims, defeating authentication even when the algorithm is not "none".',
+          remediation:
+            'Sign tokens with a real secret or key using a standard algorithm, and never ship a constant or placeholder signature. Enforce an algorithm allowlist and verify signatures server-side.',
+          owasp: 'API2: Broken Authentication',
+          evidence: {
+            url: res.url,
+            status: res.status,
+            alg,
+            signatureBytes: sigBytes,
+            tokenPreview
+          },
+          suite: 'auth',
+          tags: ['auth', 'jwt']
+        });
+      }
     }
 
     if (!('exp' in payload)) {
