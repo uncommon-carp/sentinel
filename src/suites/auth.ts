@@ -146,6 +146,20 @@ function isRedirect(status: number) {
   return status >= 300 && status < 400;
 }
 
+// Produce a credential that is structurally plausible but definitely not the
+// one the server issued: a validating server must reject it, a server that only
+// checks for the *presence* of a token will accept it. For a JWT we break the
+// signature segment (append a char — also handles the empty alg:none signature,
+// so the result always differs from the original); otherwise we mutate the
+// opaque value.
+function corruptBearer(token: string): string {
+  const parts = token.split('.');
+  if (parts.length === 3) {
+    return `${parts[0]}.${parts[1]}.${parts[2]}x`;
+  }
+  return `${token}x`;
+}
+
 export function authSuite(): Suite {
   return {
     name: 'auth',
@@ -160,12 +174,22 @@ export function authSuite(): Suite {
         .map((path) => ({ method: 'get', path }));
 
       const authConfigured = ctx.config.auth.type !== 'none';
-      const overrideHeaders: Record<string, string> = {};
+
+      // Two credential overrides for the enforcement probe. Both win over the
+      // HttpClient's injected auth header (the client merges authHeader() first,
+      // then per-request headers). `clearedHeaders` simulates no credentials;
+      // `invalidHeaders` sends a deliberately invalid one.
+      const clearedHeaders: Record<string, string> = {};
+      const invalidHeaders: Record<string, string> = {};
       if (ctx.config.auth.type === 'bearer' || ctx.config.auth.type === 'basic') {
-        overrideHeaders['authorization'] = '';
+        clearedHeaders['authorization'] = '';
+        invalidHeaders['authorization'] = `Bearer ${corruptBearer(
+          ctx.config.auth.bearerToken ?? 'x'
+        )}`;
       }
       if (ctx.config.auth.type === 'apiKey' && ctx.config.auth.apiKeyHeader) {
-        overrideHeaders[ctx.config.auth.apiKeyHeader] = '';
+        clearedHeaders[ctx.config.auth.apiKeyHeader] = '';
+        invalidHeaders[ctx.config.auth.apiKeyHeader] = 'sentinel-invalid-key';
       }
 
       for (const ep of toProbe) {
@@ -239,26 +263,36 @@ export function authSuite(): Suite {
           }
         }
 
-        // Optional enforcement heuristic:
-        // If auth is configured, compare responses with auth vs. "cleared" auth.
+        // Enforcement probe:
+        // If auth is configured, compare the protected endpoint's response to a
+        // valid credential (authedRes), a deliberately invalid one, and none.
         // This is only meaningful when probePaths are expected to be protected.
         if (authConfigured && (ctx.config.auth.compareUnauthed ?? true)) {
-          // HttpClient merges auth headers before per-request headers.
-          // To simulate an unauthenticated request without creating a second client,
-          // we override relevant credential headers with empty strings.
+          // HttpClient merges auth headers before per-request headers, so these
+          // per-request overrides replace the injected valid credential without
+          // needing a second client. Order (invalid, then cleared) is stable for
+          // test fixtures that queue mocked responses.
+          const invalidRes = await ctx.http.request({
+            method: 'GET',
+            path: ep.path,
+            headers: invalidHeaders
+          });
           const unauthedRes = await ctx.http.request({
             method: 'GET',
             path: ep.path,
-            headers: overrideHeaders
+            headers: clearedHeaders
           });
 
           findings.push(...inspectJwts(extractJwts(unauthedRes), unauthedRes));
 
-          // If both authed and unauthed succeed (2xx), that's suspicious *if the path is meant to be protected*.
-          const authedOk = authedRes.status >= 200 && authedRes.status < 300;
-          const unauthedOk = unauthedRes.status >= 200 && unauthedRes.status < 300;
+          const is2xx = (s: number) => s >= 200 && s < 300;
+          const validOk = is2xx(authedRes.status);
+          const invalidOk = is2xx(invalidRes.status);
+          const noneOk = is2xx(unauthedRes.status);
 
-          if (authedOk && unauthedOk) {
+          if (validOk && noneOk) {
+            // Success with and without any credential — the endpoint enforces no
+            // auth at all (or the probe path is genuinely public).
             findings.push({
               id: 'auth.possible_bypass_probe',
               title: 'Auth probe succeeded with and without credentials',
@@ -273,7 +307,33 @@ export function authSuite(): Suite {
               evidence: {
                 probeUrl: url,
                 authedStatus: authedRes.status,
+                invalidStatus: invalidRes.status,
                 unauthedStatus: unauthedRes.status
+              },
+              suite: 'auth',
+              tags: ['auth', 'bypass']
+            });
+          } else if (validOk && invalidOk) {
+            // Rejects the no-credential request but accepts a structurally
+            // invalid token — the endpoint checks token presence, not validity.
+            // Unlike possible_bypass_probe this is definitive, not heuristic: a
+            // genuinely public route would also serve the no-credential request.
+            findings.push({
+              id: 'auth.invalid_token_accepted',
+              title: 'Protected endpoint accepted an invalid token',
+              severity: 'high',
+              description:
+                'The endpoint returned success for a structurally invalid credential while rejecting the request with no credential at all. It appears to check that a token is present but never validates it (e.g. signature or expiry), so any well-formed-looking token is accepted.',
+              whyItMatters:
+                'An attacker only needs to supply any token-shaped value — not a legitimately issued one — to access a protected endpoint. This is a full authentication bypass with a trivially forgeable credential.',
+              remediation:
+                'Validate the token server-side (signature, issuer, and expiry) on every protected endpoint rather than checking only for the presence of an Authorization header.',
+              owasp: 'API2: Broken Authentication',
+              evidence: {
+                probeUrl: url,
+                validStatus: authedRes.status,
+                invalidStatus: invalidRes.status,
+                noneStatus: unauthedRes.status
               },
               suite: 'auth',
               tags: ['auth', 'bypass']

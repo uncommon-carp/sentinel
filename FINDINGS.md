@@ -13,6 +13,7 @@ Checks HTTP auth semantics and basic auth enforcement behavior. Probes configura
 | ID                                  | Severity | Title                                                   | OWASP                       |
 | ----------------------------------- | -------- | ------------------------------------------------------- | --------------------------- |
 | `auth.jwt_alg_none`                 | critical | JWT with alg:none detected in response                  | API2: Broken Authentication |
+| `auth.invalid_token_accepted`       | high     | Protected endpoint accepted an invalid token            | API2: Broken Authentication |
 | `auth.jwt_expired_accepted`         | high     | Server issued an already-expired JWT                    | API2: Broken Authentication |
 | `auth.jwt_missing_exp`              | medium   | JWT with no expiration claim (exp) detected in response | API2: Broken Authentication |
 | `auth.redirect_cross_origin`        | medium   | Cross-origin redirect observed on auth probe            | API2: Broken Authentication |
@@ -26,6 +27,11 @@ Checks HTTP auth semantics and basic auth enforcement behavior. Probes configura
 
 A JWT using the `alg:none` algorithm was found in a response. Tokens with `alg:none` carry no cryptographic signature; servers that accept them can be trivially bypassed. An attacker can forge arbitrary JWT claims — including elevated roles — and gain unauthorized access with no cryptographic barrier.  
 **Remediation:** Reject JWTs with `alg:none` server-side and enforce an explicit algorithm allowlist.
+
+#### `auth.invalid_token_accepted` — high
+
+A protected probe path returned success for a structurally invalid credential (a token with a broken signature) while rejecting the request with no credential at all. The endpoint checks that a token is present but never validates it, so any token-shaped value is accepted — a full authentication bypass with a trivially forgeable credential. Unlike `auth.possible_bypass_probe` this is definitive rather than heuristic: a genuinely public route would also serve the no-credential request, whereas here the no-credential request is rejected.  
+**Remediation:** Validate the token server-side (signature, issuer, and expiry) on every protected endpoint, not just the presence of an `Authorization` header. Requires a configured credential (`auth.tokenUrl` or a static `bearer`/`basic`/`apiKey`) so the probe has a valid token to contrast against.
 
 #### `auth.jwt_expired_accepted` — high
 
@@ -46,7 +52,7 @@ Auth probe returned a redirect to a different origin. Some HTTP clients forward 
 
 #### `auth.possible_bypass_probe` — medium
 
-The configured auth probe endpoint returned success both with configured credentials and with credentials cleared, suggesting the endpoint may not enforce authentication.  
+The configured auth probe endpoint returned success both with configured credentials and with credentials cleared, suggesting the endpoint may not enforce authentication. The enforcement probe is three-way — it compares a valid credential, a deliberately invalid one, and no credential; this finding covers the "succeeds with no credential" case (no auth enforced at all), while the "rejects no credential but accepts an invalid one" case is reported separately and definitively as `auth.invalid_token_accepted`.  
 **Remediation:** Verify the probe path points to a protected endpoint and ensure auth is enforced server-side. This is a heuristic — false positives occur when `auth.probePaths` includes unprotected routes.
 
 #### `auth.jwt_long_ttl` — low
@@ -212,6 +218,7 @@ Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` 
 | --------- | ----------------------------------------- | -------- |
 | auth      | `auth.jwt_alg_none`                       | critical |
 | injection | `injection.possible_command_injection`    | critical |
+| auth      | `auth.invalid_token_accepted`             | high     |
 | auth      | `auth.jwt_expired_accepted`               | high     |
 | cors      | `cors.wildcard_with_credentials`          | high     |
 | injection | `injection.sql_error_disclosure`          | high     |
