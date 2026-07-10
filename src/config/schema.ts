@@ -37,6 +37,15 @@ const RateLimitSchema = z
   })
   .default({});
 
+const InventorySchema = z
+  .object({
+    // Opt-in: when true, the SSRF surface check also probes POST/PUT/PATCH and
+    // body parameters. Default false keeps the always-on suite safe — GET query
+    // params only, no state-changing requests to the target.
+    ssrfActiveProbe: z.boolean().default(false)
+  })
+  .default({});
+
 const InjectionConfigSchema = z
   .object({
     paramTypes: z.array(z.enum(['query', 'body'])).default(['query', 'body']),
@@ -79,6 +88,7 @@ export const SentinelConfigSchema = z.object({
     })
     .default({}),
   injection: InjectionConfigSchema,
+  inventory: InventorySchema,
   scope: ScopeSchema.default({}),
   active: ActiveSchema,
   output: z

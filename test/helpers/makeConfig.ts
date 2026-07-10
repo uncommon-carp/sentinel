@@ -25,6 +25,7 @@ export function makeConfig(
       injection: false
     },
     injection: { paramTypes: ['query', 'body'], categories: ['sql', 'template'] },
+    inventory: { ssrfActiveProbe: false },
     ratelimit: { burstCount: 10, delayMs: 0 },
     scope: {
       enabled: false,
