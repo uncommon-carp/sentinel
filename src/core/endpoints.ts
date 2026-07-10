@@ -27,7 +27,7 @@ function matchesAny(res: RegExp[], value: string): boolean {
   return res.some((r) => r.test(value));
 }
 
-function extractBasePath(api: LoadedApiSpec): string {
+export function extractBasePath(api: LoadedApiSpec): string {
   const servers = (api.spec as Record<string, unknown>)?.servers;
   if (!Array.isArray(servers) || servers.length === 0) return '';
   const url = (servers[0] as Record<string, unknown>)?.url;

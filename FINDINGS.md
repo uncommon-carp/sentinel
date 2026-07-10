@@ -162,13 +162,14 @@ A template expression payload (`{{7*7}}`, `${7*7}`, `<%= 7*7 %>`) produced outpu
 
 ## inventory
 
-Probes common API paths for sensitive endpoint exposure, GraphQL introspection, and stale version endpoints. Maps to OWASP API9. Multiple paths triggering the same class of issue are collapsed into one finding.
+Probes common API paths for sensitive endpoint exposure, GraphQL introspection, and stale version endpoints. Primarily OWASP API9; the SSRF surface check maps to API7. Multiple paths triggering the same class of issue are collapsed into one finding.
 
-| ID                                        | Severity | Title                                         | OWASP                               |
-| ----------------------------------------- | -------- | --------------------------------------------- | ----------------------------------- |
-| `inventory.sensitive_endpoint_exposed`    | medium   | Sensitive endpoint(s) responding with 2xx     | API9: Improper Inventory Management |
-| `inventory.stale_version_responding`      | medium   | Deprecated API version endpoint is responding | API9: Improper Inventory Management |
-| `inventory.graphql_introspection_enabled` | low      | GraphQL introspection is enabled              | API9: Improper Inventory Management |
+| ID                                        | Severity | Title                                             | OWASP                               |
+| ----------------------------------------- | -------- | ------------------------------------------------- | ----------------------------------- |
+| `inventory.sensitive_endpoint_exposed`    | medium   | Sensitive endpoint(s) responding with 2xx         | API9: Improper Inventory Management |
+| `inventory.stale_version_responding`      | medium   | Deprecated API version endpoint is responding     | API9: Improper Inventory Management |
+| `inventory.ssrf_surface`                  | medium   | Parameter(s) accept an external URL without validation | API7: Server Side Request Forgery |
+| `inventory.graphql_introspection_enabled` | low      | GraphQL introspection is enabled                  | API9: Improper Inventory Management |
 
 ### Finding details
 
@@ -181,6 +182,11 @@ One or more of `/swagger`, `/openapi.json`, `/api-docs`, `/graphql`, `/debug`, `
 
 The API spec declares a current version (e.g. `v2`) but an older version prefix (`/v1/`, `/api/v1/`) is still returning success responses. Old versions often lack security patches present in the current version.  
 **Remediation:** Decommission or block deprecated version endpoints. If parallel versioning is intentional, ensure older versions receive equivalent security updates. Only emitted when an OpenAPI spec is loaded.
+
+#### `inventory.ssrf_surface` — medium
+
+One or more `GET` query parameters that accept a URL (by name — e.g. `url`, `uri`, `callback`, `webhook`, `redirect` — or OpenAPI `format: uri`; includes path-level parameters) took a benign external probe URL (`http://ssrf-probe.sentinel.invalid/`) without returning a validation or rejection signal. Requires a loaded OpenAPI spec. Only `GET` parameters are probed — the check is in the always-on inventory suite and must not send state-changing requests to the target. An endpoint that fetches a user-supplied URL can be steered at internal-only services or cloud metadata endpoints (e.g. `169.254.169.254`) the caller should never reach — the core SSRF condition. This is surface detection: it confirms the parameter is accepted, not that a fetch is actually performed.  
+**Remediation:** Validate and allowlist outbound URL destinations, reject internal and link-local ranges, and avoid fetching user-supplied URLs directly. Resolve and check the target host before connecting.
 
 #### `inventory.graphql_introspection_enabled` — low
 
@@ -238,6 +244,7 @@ Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` 
 | headers   | `headers.missing_hsts`                    | medium   |
 | inventory | `inventory.sensitive_endpoint_exposed`    | medium   |
 | inventory | `inventory.stale_version_responding`      | medium   |
+| inventory | `inventory.ssrf_surface`                  | medium   |
 | ratelimit | `ratelimit.no_429_on_burst`               | medium   |
 | auth      | `auth.jwt_long_ttl`                       | low      |
 | auth      | `auth.401_missing_www_authenticate`       | low      |

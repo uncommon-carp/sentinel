@@ -13,13 +13,25 @@ function makeQueue(overrides: Record<number, { status: number; bodyText?: string
   }));
 }
 
-function makeApiSpec(serverUrl: string): LoadedApiSpec {
+function makeApiSpec(serverUrl: string, paths: Record<string, unknown> = {}): LoadedApiSpec {
   return {
     source: 'test',
-    spec: { servers: [{ url: serverUrl }], paths: {} },
+    spec: { servers: [{ url: serverUrl }], paths },
     endpoints: []
   };
 }
+
+// The probe URL the SSRF check sends; the vulnerable fixture reflects it back.
+const SSRF_PROBE_URL = 'http://ssrf-probe.sentinel.invalid/';
+
+// A spec exposing one URL-accepting query parameter (GET /fetch?url=).
+const SSRF_SPEC_PATHS = {
+  '/fetch': {
+    get: {
+      parameters: [{ name: 'url', in: 'query', schema: { type: 'string', format: 'uri' } }]
+    }
+  }
+};
 
 describe('inventory suite', () => {
   it('groups multiple sensitive paths into a single finding', async () => {
@@ -126,5 +138,103 @@ describe('inventory suite', () => {
     const findings = await inventorySuite().run(makeSuiteCtx());
 
     expect(findings.every((f) => f.id !== 'inventory.graphql_introspection_enabled')).toBe(true);
+  });
+
+  it('emits ssrf_surface when a URL param is accepted without validation', async () => {
+    // Base 10 requests all 404; the SSRF probe (index 10) reflects the probe URL with 200.
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ requestedUrl: SSRF_PROBE_URL }) });
+    mockFetchQueue(queue);
+
+    const api = makeApiSpec('https://api.example.com/api/v2', SSRF_SPEC_PATHS);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    const f = findings.find((x) => x.id === 'inventory.ssrf_surface');
+    expect(f).toBeDefined();
+    expect(f!.severity).toBe('medium');
+    expect(f!.suite).toBe('inventory');
+    expect(f!.tags).toContain('ssrf');
+    expect(f!.tags).toContain('api7');
+    const params = f!.evidence?.parameters as Array<{ parameter: string; reflected: boolean }>;
+    expect(params).toHaveLength(1);
+    expect(params[0].parameter).toBe('url');
+    expect(params[0].reflected).toBe(true);
+  });
+
+  it('does not emit ssrf_surface when the URL param is validated (400)', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 400, bodyText: JSON.stringify({ error: 'url not allowed' }) });
+    mockFetchQueue(queue);
+
+    const api = makeApiSpec('https://api.example.com/api/v2', SSRF_SPEC_PATHS);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
+  });
+
+  it('does not emit ssrf_surface when a 2xx body carries a rejection signal', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ error: 'URL blocked by SSRF filter' }) });
+    mockFetchQueue(queue);
+
+    const api = makeApiSpec('https://api.example.com/api/v2', SSRF_SPEC_PATHS);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
+  });
+
+  it('detects a URL param declared at the path-item level (applies to all operations)', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ requestedUrl: SSRF_PROBE_URL }) });
+    mockFetchQueue(queue);
+
+    const pathLevelParamPaths = {
+      '/proxy': {
+        // Path-level parameters (not under a specific verb) apply to every operation.
+        parameters: [{ name: 'target_url', in: 'query', schema: { type: 'string' } }],
+        get: { summary: 'Proxy a request' }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', pathLevelParamPaths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    const f = findings.find((x) => x.id === 'inventory.ssrf_surface');
+    expect(f).toBeDefined();
+    const params = f!.evidence?.parameters as Array<{ endpoint: string; parameter: string }>;
+    expect(params[0].parameter).toBe('target_url');
+    expect(params[0].endpoint).toBe('GET /api/v2/proxy');
+  });
+
+  it('does not probe a URL param on a non-GET-only endpoint', async () => {
+    // Only the 10 base requests are queued; probing the POST param would throw
+    // "no more mocked responses" — asserting we never issue a state-changing probe.
+    mockFetchQueue(makeQueue());
+
+    const postOnlyPaths = {
+      '/webhooks': {
+        post: {
+          parameters: [{ name: 'url', in: 'query', schema: { type: 'string', format: 'uri' } }]
+        }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', postOnlyPaths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
+  });
+
+  it('issues no SSRF probe and emits no finding when the spec has no URL-like params', async () => {
+    // Only the 10 base requests are queued; a stray SSRF probe would throw "no more mocked responses".
+    mockFetchQueue(makeQueue());
+
+    const nonUrlPaths = {
+      '/search': {
+        get: { parameters: [{ name: 'q', in: 'query', schema: { type: 'string' } }] }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', nonUrlPaths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
   });
 });
