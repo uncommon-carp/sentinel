@@ -183,6 +183,46 @@ describe('inventory suite', () => {
     expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
   });
 
+  it('detects a URL param declared at the path-item level (applies to all operations)', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ requestedUrl: SSRF_PROBE_URL }) });
+    mockFetchQueue(queue);
+
+    const pathLevelParamPaths = {
+      '/proxy': {
+        // Path-level parameters (not under a specific verb) apply to every operation.
+        parameters: [{ name: 'target_url', in: 'query', schema: { type: 'string' } }],
+        get: { summary: 'Proxy a request' }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', pathLevelParamPaths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    const f = findings.find((x) => x.id === 'inventory.ssrf_surface');
+    expect(f).toBeDefined();
+    const params = f!.evidence?.parameters as Array<{ endpoint: string; parameter: string }>;
+    expect(params[0].parameter).toBe('target_url');
+    expect(params[0].endpoint).toBe('GET /api/v2/proxy');
+  });
+
+  it('does not probe a URL param on a non-GET-only endpoint', async () => {
+    // Only the 10 base requests are queued; probing the POST param would throw
+    // "no more mocked responses" — asserting we never issue a state-changing probe.
+    mockFetchQueue(makeQueue());
+
+    const postOnlyPaths = {
+      '/webhooks': {
+        post: {
+          parameters: [{ name: 'url', in: 'query', schema: { type: 'string', format: 'uri' } }]
+        }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', postOnlyPaths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
+  });
+
   it('issues no SSRF probe and emits no finding when the spec has no URL-like params', async () => {
     // Only the 10 base requests are queued; a stray SSRF probe would throw "no more mocked responses".
     mockFetchQueue(makeQueue());

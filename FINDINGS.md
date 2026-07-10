@@ -185,7 +185,7 @@ The API spec declares a current version (e.g. `v2`) but an older version prefix 
 
 #### `inventory.ssrf_surface` — medium
 
-One or more query parameters that accept a URL (by name — e.g. `url`, `uri`, `callback`, `webhook`, `redirect` — or OpenAPI `format: uri`) took a benign external probe URL (`http://ssrf-probe.sentinel.invalid/`) without returning a validation or rejection signal. Requires a loaded OpenAPI spec. An endpoint that fetches a user-supplied URL can be steered at internal-only services or cloud metadata endpoints (e.g. `169.254.169.254`) the caller should never reach — the core SSRF condition. This is surface detection: it confirms the parameter is accepted, not that a fetch is actually performed.  
+One or more `GET` query parameters that accept a URL (by name — e.g. `url`, `uri`, `callback`, `webhook`, `redirect` — or OpenAPI `format: uri`; includes path-level parameters) took a benign external probe URL (`http://ssrf-probe.sentinel.invalid/`) without returning a validation or rejection signal. Requires a loaded OpenAPI spec. Only `GET` parameters are probed — the check is in the always-on inventory suite and must not send state-changing requests to the target. An endpoint that fetches a user-supplied URL can be steered at internal-only services or cloud metadata endpoints (e.g. `169.254.169.254`) the caller should never reach — the core SSRF condition. This is surface detection: it confirms the parameter is accepted, not that a fetch is actually performed.  
 **Remediation:** Validate and allowlist outbound URL destinations, reject internal and link-local ranges, and avoid fetching user-supplied URLs directly. Resolve and check the target host before connecting.
 
 #### `inventory.graphql_introspection_enabled` — low

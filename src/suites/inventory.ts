@@ -72,7 +72,18 @@ function isUrlLikeParam(param: Record<string, unknown>): boolean {
   return URL_SCHEMA_FORMATS.has(format);
 }
 
-// Collect URL-accepting query parameters declared in the spec's operations.
+function asParamArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
+}
+
+// Collect URL-accepting query parameters to probe. Scoped to GET operations only:
+// this check lives in the always-on inventory suite, and actively probing a
+// non-idempotent method (POST/PUT/PATCH/DELETE) could create or mutate a resource
+// on the target (e.g. registering a webhook pointed at the probe URL). GET is also
+// the only method whose response body we can inspect for a validation signal.
+// Parameters declared at the path-item level (a valid OpenAPI pattern that applies
+// to every operation on the path) are merged in; non-verb path-item keys
+// (summary, description, path-level `parameters`) are not treated as operations.
 function collectUrlParams(spec: Record<string, unknown>): UrlParam[] {
   const paths = spec.paths as Record<string, unknown> | undefined;
   if (!paths || typeof paths !== 'object') return [];
@@ -80,14 +91,19 @@ function collectUrlParams(spec: Record<string, unknown>): UrlParam[] {
   for (const [path, pathItemRaw] of Object.entries(paths)) {
     const pathItem = pathItemRaw as Record<string, unknown> | undefined;
     if (!pathItem) continue;
-    for (const [method, opRaw] of Object.entries(pathItem)) {
-      const operation = opRaw as Record<string, unknown> | undefined;
-      const parameters = operation?.['parameters'];
-      if (!Array.isArray(parameters)) continue;
-      for (const p of parameters as Array<Record<string, unknown>>) {
-        if (p['in'] === 'query' && isUrlLikeParam(p)) {
-          out.push({ path, method, name: p['name'] as string });
-        }
+    const getOp = pathItem['get'] as Record<string, unknown> | undefined;
+    if (!getOp) continue;
+
+    // Operation-level params first so they win the per-name dedup over any
+    // same-named path-level param (OpenAPI operation params override path params).
+    const merged = [...asParamArray(getOp['parameters']), ...asParamArray(pathItem['parameters'])];
+    const seen = new Set<string>();
+    for (const p of merged) {
+      const name = typeof p['name'] === 'string' ? p['name'] : '';
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      if (p['in'] === 'query' && isUrlLikeParam(p)) {
+        out.push({ path, method: 'get', name });
       }
     }
   }
@@ -250,7 +266,10 @@ export function inventorySuite(): Suite {
             endpoint: `${p.method.toUpperCase()} ${basePath}${p.path}`,
             parameter: p.name
           });
-          const res = await ctx.http.request({ method: 'GET', path: reqPath });
+          // Probe with the parameter's own method (GET — collectUrlParams only
+          // yields GET params) so the request always matches the logged/evidenced
+          // endpoint rather than silently diverging from it.
+          const res = await ctx.http.request({ method: p.method.toUpperCase(), path: reqPath });
 
           const ok = res.status >= 200 && res.status < 300;
           const bodyLower = res.bodyText.toLowerCase();
