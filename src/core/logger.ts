@@ -22,6 +22,7 @@ export type DebugEvent =
   | 'injection.hit'
   | 'injection.payload.sent'
   | 'inventory.probe'
+  | 'inventory.ssrf.probe'
   | 'headers.check'
   | 'sentinel.s3.upload.start';
 

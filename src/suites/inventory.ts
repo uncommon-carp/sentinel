@@ -7,13 +7,17 @@
  *   introspection data is returned (API9 / hardening)
  * - Stale API version: if an OpenAPI spec is loaded with a declared base version, checks
  *   whether older version prefixes (/v1/, /api/v1/) are still responding (API9)
+ * - SSRF surface: if an OpenAPI spec is loaded, finds query parameters that accept a URL
+ *   and confirms the server takes an external URL without a validation signal (API7)
  *
  * Multiple paths triggering the same class of issue are collapsed into one finding.
  *
- * Maps to OWASP API9: Improper Inventory Management.
+ * Maps primarily to OWASP API9: Improper Inventory Management (the SSRF surface check
+ * maps to API7 — one suite can emit findings across OWASP categories).
  */
 
 import type { Suite, Finding } from '../core/types.js';
+import { extractBasePath } from '../core/endpoints.js';
 
 type ProbedPath = { path: string; status: number; url: string };
 
@@ -33,6 +37,62 @@ const ALL_PROBE_PATHS = [...SENSITIVE_PATHS, ...VERSION_PATHS];
 
 const GRAPHQL_PATH = '/graphql';
 const INTROSPECTION_BODY = JSON.stringify({ query: '{ __schema { queryType { name } } }' });
+
+// SSRF surface detection (API7). We probe query parameters that look like they
+// accept a URL with a benign, non-resolving probe (the ".invalid" TLD never
+// resolves, so even a target that fetches it reaches nothing) and flag those the
+// server accepts without a validation/rejection signal.
+const SSRF_PROBE_URL = 'http://ssrf-probe.sentinel.invalid/';
+const SSRF_PROBE_HOST = 'ssrf-probe.sentinel.invalid';
+const URL_PARAM_NAMES = new Set([
+  'callback',
+  'webhook',
+  'redirect',
+  'redirect_uri',
+  'feed',
+  'proxy',
+  'dest',
+  'destination',
+  'fetch'
+]);
+const URL_SCHEMA_FORMATS = new Set(['uri', 'url']);
+// Note: kept free of substrings that appear in SSRF_PROBE_URL (e.g. "ssrf"),
+// so a server reflecting the probe URL isn't mistaken for a rejection.
+const REJECTION_PATTERNS = ['not allowed', 'disallowed', 'invalid url', 'blocked', 'forbidden'];
+
+type UrlParam = { path: string; method: string; name: string };
+
+function isUrlLikeParam(param: Record<string, unknown>): boolean {
+  const name = typeof param['name'] === 'string' ? param['name'].toLowerCase() : '';
+  if (!name) return false;
+  if (name.includes('url') || name.includes('uri')) return true;
+  if (URL_PARAM_NAMES.has(name)) return true;
+  const schema = param['schema'] as Record<string, unknown> | undefined;
+  const format = typeof schema?.['format'] === 'string' ? schema['format'].toLowerCase() : '';
+  return URL_SCHEMA_FORMATS.has(format);
+}
+
+// Collect URL-accepting query parameters declared in the spec's operations.
+function collectUrlParams(spec: Record<string, unknown>): UrlParam[] {
+  const paths = spec.paths as Record<string, unknown> | undefined;
+  if (!paths || typeof paths !== 'object') return [];
+  const out: UrlParam[] = [];
+  for (const [path, pathItemRaw] of Object.entries(paths)) {
+    const pathItem = pathItemRaw as Record<string, unknown> | undefined;
+    if (!pathItem) continue;
+    for (const [method, opRaw] of Object.entries(pathItem)) {
+      const operation = opRaw as Record<string, unknown> | undefined;
+      const parameters = operation?.['parameters'];
+      if (!Array.isArray(parameters)) continue;
+      for (const p of parameters as Array<Record<string, unknown>>) {
+        if (p['in'] === 'query' && isUrlLikeParam(p)) {
+          out.push({ path, method, name: p['name'] as string });
+        }
+      }
+    }
+  }
+  return out;
+}
 
 function extractDeclaredVersion(spec: Record<string, unknown>): string | null {
   const servers = spec.servers as Array<{ url: string }> | undefined;
@@ -169,6 +229,65 @@ export function inventorySuite(): Suite {
               tags: ['inventory', 'api9']
             });
           }
+        }
+      }
+
+      if (ctx.api) {
+        const basePath = extractBasePath(ctx.api);
+        const urlParams = collectUrlParams(ctx.api.spec).slice(0, cap);
+        const accepted: Array<{
+          endpoint: string;
+          parameter: string;
+          status: number;
+          reflected: boolean;
+        }> = [];
+
+        for (const p of urlParams) {
+          const qs = new URLSearchParams({ [p.name]: SSRF_PROBE_URL });
+          const reqPath = `${basePath}${p.path}?${qs}`;
+          logger.debug('SSRF surface probe', {
+            event: 'inventory.ssrf.probe',
+            endpoint: `${p.method.toUpperCase()} ${basePath}${p.path}`,
+            parameter: p.name
+          });
+          const res = await ctx.http.request({ method: 'GET', path: reqPath });
+
+          const ok = res.status >= 200 && res.status < 300;
+          const bodyLower = res.bodyText.toLowerCase();
+          const rejected = REJECTION_PATTERNS.some((r) => bodyLower.includes(r));
+          if (ok && !rejected) {
+            accepted.push({
+              endpoint: `${p.method.toUpperCase()} ${basePath}${p.path}`,
+              parameter: p.name,
+              status: res.status,
+              reflected: res.bodyText.includes(SSRF_PROBE_HOST)
+            });
+          }
+        }
+
+        if (accepted.length > 0) {
+          findings.push({
+            id: 'inventory.ssrf_surface',
+            title: 'Parameter(s) accept an external URL without validation',
+            severity: 'medium',
+            description:
+              `${accepted.length} query parameter(s) accepted an external URL probe without a ` +
+              'validation or rejection signal. An endpoint that fetches a user-supplied URL can ' +
+              'be steered at internal-only services, cloud metadata endpoints, or other hosts the ' +
+              'API can reach but the caller should not — the core SSRF condition.',
+            whyItMatters:
+              'Server-side request forgery lets an attacker pivot from the public API into the ' +
+              'internal network: reaching admin services, databases, or cloud metadata endpoints ' +
+              '(e.g. 169.254.169.254) that are otherwise unreachable from outside.',
+            remediation:
+              'Validate and allowlist outbound URL destinations, reject internal and link-local ' +
+              'address ranges, and avoid fetching user-supplied URLs directly. Where a fetch is ' +
+              'required, resolve and check the target host before connecting.',
+            owasp: 'API7: Server Side Request Forgery',
+            evidence: { probeUrl: SSRF_PROBE_URL, parameters: accepted },
+            suite: 'inventory',
+            tags: ['inventory', 'ssrf', 'api7']
+          });
         }
       }
 
