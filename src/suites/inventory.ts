@@ -7,8 +7,10 @@
  *   introspection data is returned (API9 / hardening)
  * - Stale API version: if an OpenAPI spec is loaded with a declared base version, checks
  *   whether older version prefixes (/v1/, /api/v1/) are still responding (API9)
- * - SSRF surface: if an OpenAPI spec is loaded, finds query parameters that accept a URL
- *   and confirms the server takes an external URL without a validation signal (API7)
+ * - SSRF surface: if an OpenAPI spec is loaded, finds parameters that accept a URL and
+ *   confirms the server takes an external URL without a validation signal (API7). GET
+ *   query params only by default; `inventory.ssrfActiveProbe` opts into probing
+ *   POST/PUT/PATCH and body params (active, may create/mutate resources on the target).
  *
  * Multiple paths triggering the same class of issue are collapsed into one finding.
  *
@@ -60,7 +62,11 @@ const URL_SCHEMA_FORMATS = new Set(['uri', 'url']);
 // so a server reflecting the probe URL isn't mistaken for a rejection.
 const REJECTION_PATTERNS = ['not allowed', 'disallowed', 'invalid url', 'blocked', 'forbidden'];
 
-type UrlParam = { path: string; method: string; name: string };
+// Methods probed when inventory.ssrfActiveProbe is on. DELETE is excluded — it
+// almost never carries a URL-to-fetch param and is purely destructive.
+const ACTIVE_METHODS = ['get', 'post', 'put', 'patch'];
+
+type UrlParam = { path: string; method: string; name: string; paramType: 'query' | 'body' };
 
 function isUrlLikeParam(param: Record<string, unknown>): boolean {
   const name = typeof param['name'] === 'string' ? param['name'].toLowerCase() : '';
@@ -76,34 +82,67 @@ function asParamArray(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
 }
 
-// Collect URL-accepting query parameters to probe. Scoped to GET operations only:
-// this check lives in the always-on inventory suite, and actively probing a
-// non-idempotent method (POST/PUT/PATCH/DELETE) could create or mutate a resource
-// on the target (e.g. registering a webhook pointed at the probe URL). GET is also
-// the only method whose response body we can inspect for a validation signal.
-// Parameters declared at the path-item level (a valid OpenAPI pattern that applies
+// URL-accepting JSON body fields declared on an operation's requestBody.
+function collectBodyFields(operation: Record<string, unknown>): string[] {
+  const requestBody = operation['requestBody'] as Record<string, unknown> | undefined;
+  const content = requestBody?.['content'] as Record<string, unknown> | undefined;
+  const json = content?.['application/json'] as Record<string, unknown> | undefined;
+  const schema = json?.['schema'] as Record<string, unknown> | undefined;
+  const properties = schema?.['properties'];
+  if (!properties || typeof properties !== 'object') return [];
+  return Object.entries(properties as Record<string, unknown>)
+    .filter(([name, propSchema]) => isUrlLikeParam({ name, schema: propSchema }))
+    .map(([name]) => name);
+}
+
+// Collect URL-accepting parameters to probe.
+//
+// Default (activeProbe=false): GET query params only. This check lives in the
+// always-on inventory suite, which must not send state-changing requests to the
+// target, and GET is the only method whose response body we can inspect for a
+// validation signal.
+//
+// activeProbe=true: also probe POST/PUT/PATCH and JSON body params — the common
+// real-world SSRF vector (webhook registration, resource create/update that
+// fetches a supplied URL). Opt-in because these requests may create or mutate
+// resources on the target.
+//
+// Query params declared at the path-item level (a valid OpenAPI pattern applying
 // to every operation on the path) are merged in; non-verb path-item keys
 // (summary, description, path-level `parameters`) are not treated as operations.
-function collectUrlParams(spec: Record<string, unknown>): UrlParam[] {
+function collectUrlParams(spec: Record<string, unknown>, activeProbe: boolean): UrlParam[] {
   const paths = spec.paths as Record<string, unknown> | undefined;
   if (!paths || typeof paths !== 'object') return [];
+  const methods = activeProbe ? ACTIVE_METHODS : ['get'];
   const out: UrlParam[] = [];
   for (const [path, pathItemRaw] of Object.entries(paths)) {
     const pathItem = pathItemRaw as Record<string, unknown> | undefined;
     if (!pathItem) continue;
-    const getOp = pathItem['get'] as Record<string, unknown> | undefined;
-    if (!getOp) continue;
+    const pathLevelParams = asParamArray(pathItem['parameters']);
 
-    // Operation-level params first so they win the per-name dedup over any
-    // same-named path-level param (OpenAPI operation params override path params).
-    const merged = [...asParamArray(getOp['parameters']), ...asParamArray(pathItem['parameters'])];
-    const seen = new Set<string>();
-    for (const p of merged) {
-      const name = typeof p['name'] === 'string' ? p['name'] : '';
-      if (!name || seen.has(name)) continue;
-      seen.add(name);
-      if (p['in'] === 'query' && isUrlLikeParam(p)) {
-        out.push({ path, method: 'get', name });
+    for (const method of methods) {
+      const operation = pathItem[method] as Record<string, unknown> | undefined;
+      if (!operation) continue;
+
+      // Query params: operation-level first so they win the per-name dedup over
+      // any same-named path-level param (OpenAPI operation params override path
+      // params).
+      const merged = [...asParamArray(operation['parameters']), ...pathLevelParams];
+      const seen = new Set<string>();
+      for (const p of merged) {
+        const name = typeof p['name'] === 'string' ? p['name'] : '';
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        if (p['in'] === 'query' && isUrlLikeParam(p)) {
+          out.push({ path, method, name, paramType: 'query' });
+        }
+      }
+
+      // Body params (active probe only — GET has no request body).
+      if (activeProbe) {
+        for (const name of collectBodyFields(operation)) {
+          out.push({ path, method, name, paramType: 'body' });
+        }
       }
     }
   }
@@ -250,34 +289,54 @@ export function inventorySuite(): Suite {
 
       if (ctx.api) {
         const basePath = extractBasePath(ctx.api);
-        const urlParams = collectUrlParams(ctx.api.spec).slice(0, cap);
+        const urlParams = collectUrlParams(
+          ctx.api.spec,
+          ctx.config.inventory.ssrfActiveProbe
+        ).slice(0, cap);
         const accepted: Array<{
           endpoint: string;
+          method: string;
           parameter: string;
+          paramType: 'query' | 'body';
           status: number;
           reflected: boolean;
         }> = [];
 
         for (const p of urlParams) {
-          const qs = new URLSearchParams({ [p.name]: SSRF_PROBE_URL });
-          const reqPath = `${basePath}${p.path}?${qs}`;
+          const method = p.method.toUpperCase();
+          const endpoint = `${method} ${basePath}${p.path}`;
           logger.debug('SSRF surface probe', {
             event: 'inventory.ssrf.probe',
-            endpoint: `${p.method.toUpperCase()} ${basePath}${p.path}`,
-            parameter: p.name
+            endpoint,
+            parameter: p.name,
+            paramType: p.paramType
           });
-          // Probe with the parameter's own method (GET — collectUrlParams only
-          // yields GET params) so the request always matches the logged/evidenced
-          // endpoint rather than silently diverging from it.
-          const res = await ctx.http.request({ method: p.method.toUpperCase(), path: reqPath });
+
+          // Probe with the parameter's own method and location so the request
+          // always matches the logged/evidenced endpoint rather than silently
+          // diverging from it.
+          let res;
+          if (p.paramType === 'body') {
+            res = await ctx.http.request({
+              method,
+              path: `${basePath}${p.path}`,
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ [p.name]: SSRF_PROBE_URL })
+            });
+          } else {
+            const qs = new URLSearchParams({ [p.name]: SSRF_PROBE_URL });
+            res = await ctx.http.request({ method, path: `${basePath}${p.path}?${qs}` });
+          }
 
           const ok = res.status >= 200 && res.status < 300;
           const bodyLower = res.bodyText.toLowerCase();
           const rejected = REJECTION_PATTERNS.some((r) => bodyLower.includes(r));
           if (ok && !rejected) {
             accepted.push({
-              endpoint: `${p.method.toUpperCase()} ${basePath}${p.path}`,
+              endpoint,
+              method,
               parameter: p.name,
+              paramType: p.paramType,
               status: res.status,
               reflected: res.bodyText.includes(SSRF_PROBE_HOST)
             });
@@ -290,7 +349,7 @@ export function inventorySuite(): Suite {
             title: 'Parameter(s) accept an external URL without validation',
             severity: 'medium',
             description:
-              `${accepted.length} query parameter(s) accepted an external URL probe without a ` +
+              `${accepted.length} parameter(s) accepted an external URL probe without a ` +
               'validation or rejection signal. An endpoint that fetches a user-supplied URL can ' +
               'be steered at internal-only services, cloud metadata endpoints, or other hosts the ' +
               'API can reach but the caller should not — the core SSRF condition.',

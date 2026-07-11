@@ -205,6 +205,95 @@ describe('inventory suite', () => {
     expect(params[0].endpoint).toBe('GET /api/v2/proxy');
   });
 
+  it('probes a POST body URL param when ssrfActiveProbe is on', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ registeredUrl: SSRF_PROBE_URL }) });
+    mockFetchQueue(queue);
+
+    const webhookPaths = {
+      '/webhooks': {
+        post: {
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { url: { type: 'string', format: 'uri' } } }
+              }
+            }
+          }
+        }
+      }
+    };
+    const ctx = {
+      ...makeSuiteCtx(),
+      api: makeApiSpec('https://api.example.com/api/v2', webhookPaths)
+    };
+    ctx.config.inventory.ssrfActiveProbe = true;
+
+    const findings = await inventorySuite().run(ctx);
+
+    const f = findings.find((x) => x.id === 'inventory.ssrf_surface');
+    expect(f).toBeDefined();
+    const params = f!.evidence?.parameters as Array<{
+      method: string;
+      paramType: string;
+      parameter: string;
+      endpoint: string;
+    }>;
+    expect(params).toHaveLength(1);
+    expect(params[0]).toMatchObject({
+      method: 'POST',
+      paramType: 'body',
+      parameter: 'url',
+      endpoint: 'POST /api/v2/webhooks'
+    });
+  });
+
+  it('probes a query URL param on a PUT operation when ssrfActiveProbe is on', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ requestedUrl: SSRF_PROBE_URL }) });
+    mockFetchQueue(queue);
+
+    const putPaths = {
+      '/settings': {
+        put: {
+          parameters: [{ name: 'redirect_uri', in: 'query', schema: { type: 'string' } }]
+        }
+      }
+    };
+    const ctx = { ...makeSuiteCtx(), api: makeApiSpec('https://api.example.com/api/v2', putPaths) };
+    ctx.config.inventory.ssrfActiveProbe = true;
+
+    const findings = await inventorySuite().run(ctx);
+
+    const f = findings.find((x) => x.id === 'inventory.ssrf_surface');
+    expect(f).toBeDefined();
+    const params = f!.evidence?.parameters as Array<{ method: string; paramType: string }>;
+    expect(params[0]).toMatchObject({ method: 'PUT', paramType: 'query' });
+  });
+
+  it('does not probe a POST body URL param when ssrfActiveProbe is off (default)', async () => {
+    // Only the 10 base requests are queued; an active body probe would throw.
+    mockFetchQueue(makeQueue());
+
+    const webhookPaths = {
+      '/webhooks': {
+        post: {
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { type: 'object', properties: { url: { type: 'string', format: 'uri' } } }
+              }
+            }
+          }
+        }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', webhookPaths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
+  });
+
   it('does not probe a URL param on a non-GET-only endpoint', async () => {
     // Only the 10 base requests are queued; probing the POST param would throw
     // "no more mocked responses" — asserting we never issue a state-changing probe.
