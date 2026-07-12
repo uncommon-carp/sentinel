@@ -24,10 +24,7 @@ program
   .option('-c, --config <path>', 'Path to sentinel.config.json', 'sentinel.config.json')
   .option('--openapi <pathOrUrl>', 'OpenAPI file path or URL')
   // No commander defaults here: an omitted flag must stay `undefined` so the
-  // config file's `output.dir` / `verbose` can take effect. A hardcoded default
-  // would always win over the config (it's never undefined), silently shadowing
-  // it. The ultimate fallback lives in the schema (output.dir → './sentinel-out',
-  // verbose → false), so behaviour is unchanged when neither flag nor config sets them.
+  // config file's `output.dir` / `verbose` can take effect.
   .option('-o, --out <dir>', 'Output directory (default: config output.dir, else ./sentinel-out)')
   .option('-v, --verbose', 'Verbose logging (default: config verbose, else off)')
   .action(async (opts) => {
