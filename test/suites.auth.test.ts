@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { authSuite } from '../src/suites/auth.js';
 import { mockFetchQueue } from './helpers/fetchMock.js';
 import { makeSuiteCtx, makeConfig } from './helpers/makeConfig.js';
@@ -241,32 +241,50 @@ describe('auth suite — BOLA probe', () => {
   // probePaths [] so the only requests the suite makes are the BOLA probe's,
   // keeping the order-based fetch mock queue easy to reason about. cap bounds the
   // candidate-id sweep (cap 1 → only id=1 → exactly 3 requests: identityA, identityB, unauth).
+  const API_KEY_HEADER = 'x-api-key';
+
   function bolaCtx(opts: {
     identityNames: string[];
     cap?: number;
     api?: LoadedApiSpec | undefined;
+    authType?: 'bearer' | 'apiKey';
   }): SuiteContext {
     const logger = createLogger({ verbose: false });
-    const mkHttp = (token: string) =>
+    const authType = opts.authType ?? 'bearer';
+    const mkHttp = (name: string) =>
       new HttpClient(
         {
           baseUrl,
           timeoutMs: 8000,
-          authHeader: () => ({ authorization: `Bearer ${token}` }),
-          authType: 'bearer'
+          authHeader: () =>
+            authType === 'apiKey'
+              ? { [API_KEY_HEADER]: `${name}-key` }
+              : { authorization: `Bearer ${name}-token` },
+          authType
         },
         logger
       );
-    const identities = opts.identityNames.map((name) => ({ name, http: mkHttp(`${name}-token`) }));
-    const config = makeConfig(baseUrl, 'bearer', {
+    const identities = opts.identityNames.map((name) => ({ name, http: mkHttp(name) }));
+    const config = makeConfig(baseUrl, authType, {
       auth: {
-        identities: opts.identityNames.map((name) => ({
-          name,
-          type: 'bearer',
-          bearerToken: `${name}-token`,
-          tokenMethod: 'GET',
-          tokenField: 'token'
-        })),
+        identities: opts.identityNames.map((name) =>
+          authType === 'apiKey'
+            ? {
+                name,
+                type: 'apiKey',
+                apiKeyHeader: API_KEY_HEADER,
+                apiKeyValue: `${name}-key`,
+                tokenMethod: 'GET',
+                tokenField: 'token'
+              }
+            : {
+                name,
+                type: 'bearer',
+                bearerToken: `${name}-token`,
+                tokenMethod: 'GET',
+                tokenField: 'token'
+              }
+        ),
         probePaths: [],
         compareUnauthed: false
       },
@@ -348,5 +366,33 @@ describe('auth suite — BOLA probe', () => {
     );
 
     expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
+  });
+
+  it('strips an apiKey credential in the unauthenticated guard, not just Authorization', async () => {
+    // Header-aware server: serves the object for any request carrying a non-empty
+    // X-API-Key, 401 otherwise. Both identities carry a key, so if the guard only
+    // cleared `authorization` (the pre-fix behaviour) its request would still be
+    // authenticated, read as 2xx/public, and suppress the finding. A correct guard
+    // strips the primary identity's *actual* scheme (the apiKey header) → 401.
+    const OBJECT = '{"id":1,"owner":"alice"}';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        const headers = (init.headers ?? {}) as Record<string, string>;
+        const key = headers[API_KEY_HEADER];
+        const authed = typeof key === 'string' && key.length > 0;
+        return {
+          status: authed ? 200 : 401,
+          headers: { forEach() {} } as unknown as Headers,
+          text: async () => (authed ? OBJECT : 'unauthorized')
+        } as unknown as Response;
+      })
+    );
+
+    const findings = await authSuite().run(
+      bolaCtx({ identityNames: ['alice', 'bob'], cap: 1, authType: 'apiKey' })
+    );
+
+    expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeDefined();
   });
 });

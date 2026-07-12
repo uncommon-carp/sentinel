@@ -453,13 +453,6 @@ export function authSuite(): Suite {
         const basePath = extractBasePath(ctx.api);
         const objectEndpoints = discoverObjectEndpoints(ctx.api.spec);
 
-        // Bound total work by the per-suite request cap. Each unit issues one
-        // request per identity plus one unauthenticated guard request.
-        const probeUnits: { ep: ObjectEndpoint; id: number }[] = [];
-        for (const ep of objectEndpoints) {
-          for (const id of BOLA_CANDIDATE_IDS) probeUnits.push({ ep, id });
-        }
-
         const accesses: Array<{
           endpoint: string;
           resourceId: number;
@@ -469,52 +462,69 @@ export function authSuite(): Suite {
           bodiesMatch: boolean;
         }> = [];
 
-        for (const { ep, id } of probeUnits.slice(0, cap)) {
-          const requestPath = `${basePath}${ep.path.replace(`{${ep.paramName}}`, String(id))}`;
-          const endpointLabel = `GET ${requestPath}`;
-          logger.debug('BOLA probe', {
-            event: 'auth.bola.probe',
-            endpoint: endpointLabel,
-            resourceId: id
-          });
+        // Bound total work by the per-suite request cap (one probe unit per
+        // candidate id, each issuing a request per identity plus the guard). One
+        // confirmed access per endpoint is enough to flag it, so stop sweeping an
+        // endpoint's remaining ids once it's confirmed and spend the leftover
+        // budget on other endpoints instead.
+        let budget = cap;
+        for (const ep of objectEndpoints) {
+          if (budget <= 0) break;
+          for (const id of BOLA_CANDIDATE_IDS) {
+            if (budget <= 0) break;
+            budget--;
 
-          const perIdentity: { name: string; status: number; bodyText: string }[] = [];
-          for (const identity of identities) {
-            const res = await identity.http.request({ method: 'GET', path: requestPath });
-            perIdentity.push({ name: identity.name, status: res.status, bodyText: res.bodyText });
-          }
-
-          // Unauthenticated guard: an object the endpoint serves with no
-          // credential at all is public (or a full auth bypass, already covered
-          // by possible_bypass_probe) — not an object-level authorization gap.
-          const unauthRes = await identities[0]!.http.request({
-            method: 'GET',
-            path: requestPath,
-            headers: { authorization: '' }
-          });
-          if (unauthRes.status >= 200 && unauthRes.status < 300) continue;
-
-          // Group the 2xx responses by body. A body returned to two or more
-          // distinct identities is the same object served across identities —
-          // the BOLA signal (identity B received the record identity A did).
-          const byBody = new Map<string, Set<string>>();
-          for (const r of perIdentity) {
-            if (r.status < 200 || r.status >= 300) continue;
-            if (!byBody.has(r.bodyText)) byBody.set(r.bodyText, new Set());
-            byBody.get(r.bodyText)!.add(r.name);
-          }
-          const shared = [...byBody.values()].find((names) => names.size >= 2);
-          if (shared) {
-            const statuses: Record<string, number> = {};
-            for (const r of perIdentity) statuses[r.name] = r.status;
-            accesses.push({
+            const requestPath = `${basePath}${ep.path.replace(`{${ep.paramName}}`, String(id))}`;
+            const endpointLabel = `GET ${requestPath}`;
+            logger.debug('BOLA probe', {
+              event: 'auth.bola.probe',
               endpoint: endpointLabel,
-              resourceId: id,
-              identities: [...shared],
-              statuses,
-              unauthStatus: unauthRes.status,
-              bodiesMatch: true
+              resourceId: id
             });
+
+            const perIdentity: { name: string; status: number; bodyText: string }[] = [];
+            for (const identity of identities) {
+              const res = await identity.http.request({ method: 'GET', path: requestPath });
+              perIdentity.push({ name: identity.name, status: res.status, bodyText: res.bodyText });
+            }
+
+            // Unauthenticated guard: an object the endpoint serves with no
+            // credential at all is public (or a full auth bypass, already covered
+            // by possible_bypass_probe) — not an object-level authorization gap.
+            // Reuse `clearedHeaders` from the enforcement probe so the credential
+            // is stripped for the primary identity's *actual* scheme — an
+            // apiKey-in-custom-header identity isn't left carrying valid auth,
+            // which would silently read as "public" and suppress a real finding.
+            const unauthRes = await identities[0]!.http.request({
+              method: 'GET',
+              path: requestPath,
+              headers: clearedHeaders
+            });
+            if (unauthRes.status >= 200 && unauthRes.status < 300) continue;
+
+            // Group the 2xx responses by body. A body returned to two or more
+            // distinct identities is the same object served across identities —
+            // the BOLA signal (identity B received the record identity A did).
+            const byBody = new Map<string, Set<string>>();
+            for (const r of perIdentity) {
+              if (r.status < 200 || r.status >= 300) continue;
+              if (!byBody.has(r.bodyText)) byBody.set(r.bodyText, new Set());
+              byBody.get(r.bodyText)!.add(r.name);
+            }
+            const shared = [...byBody.values()].find((names) => names.size >= 2);
+            if (shared) {
+              const statuses: Record<string, number> = {};
+              for (const r of perIdentity) statuses[r.name] = r.status;
+              accesses.push({
+                endpoint: endpointLabel,
+                resourceId: id,
+                identities: [...shared],
+                statuses,
+                unauthStatus: unauthRes.status,
+                bodiesMatch: true
+              });
+              break; // endpoint confirmed — move to the next one
+            }
           }
         }
 
