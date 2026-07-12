@@ -22,6 +22,19 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ### Fixed
 
+- **A failed S3 report upload (pipeline mode) no longer crashes an otherwise-complete
+  scan.** `uploadReportToS3` was called directly from `scanCommand` with no error
+  isolation, unlike the json/markdown reporters, which are already wrapped by
+  `runScan` so a failure lands in `reporterErrors` instead of throwing. A transient
+  S3 error (throttling, a momentary network blip) on a scan that had already run to
+  completion would propagate all the way to the top-level CLI handler and exit code
+  3 ("fatal pre-scan error") — indistinguishable from a genuinely broken config, even
+  though findings were computed correctly and a local report exists on disk. The
+  upload is now wrapped the same way (new `uploadPipelineReport` helper in
+  `cli/commands/scan.ts`): a failure is logged and recorded in
+  `result.reporterErrors` (`{ reporter: 's3', message, stack? }`), and no longer
+  affects the scan's exit code.
+
 - **`output.dir` and `verbose` in the config file are now honored.** The `scan`
   command gave `--out` and `--verbose` hardcoded commander defaults
   (`./sentinel-out` / `false`), so those options were never absent and always
