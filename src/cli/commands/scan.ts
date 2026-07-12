@@ -12,6 +12,7 @@ import { loadOpenApi } from '../../openapi/load.js';
 import { selectEndpoints } from '../../core/endpoints.js';
 import type { Credential, NamedIdentity } from '../../config/schema.js';
 import type { LoadedApiSpec } from '../../openapi/types.js';
+import type { RunResult } from '../../core/types.js';
 
 export type IdentitySession = { name: string; http: HttpClient; credential: NamedIdentity };
 
@@ -95,6 +96,42 @@ export async function buildIdentitySessions(
     sessions.push({ name: identity.name, http, credential: resolved });
   }
   return sessions;
+}
+
+// Mirrors runScan's reporter error-isolation pattern (core/runner.ts): a
+// failed upload lands in result.reporterErrors and is logged, never thrown.
+// The S3 upload can't live inside runScan's own reporter loop (it uploads
+// rather than writing a local file, and it's conditional on pipeline mode),
+// so it gets the same catch-log-record treatment applied separately here —
+// a transient S3 error on an otherwise-complete scan must not turn into a
+// fatal exit code.
+export async function uploadPipelineReport(
+  pipeline: { resultsBucket: string; runId: string },
+  result: RunResult,
+  logger: Logger
+): Promise<void> {
+  logger.debug('Uploading report to S3', {
+    event: 'sentinel.s3.upload.start',
+    bucket: pipeline.resultsBucket,
+    runId: pipeline.runId
+  });
+  try {
+    await uploadReportToS3(pipeline.resultsBucket, pipeline.runId, result);
+    logger.info(
+      `Report uploaded to s3://${pipeline.resultsBucket}/results/${pipeline.runId}.json`,
+      { event: 'sentinel.s3.uploaded', bucket: pipeline.resultsBucket, runId: pipeline.runId }
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    logger.error(`S3 upload failed: ${message}`, {
+      event: 'sentinel.s3.upload.error',
+      bucket: pipeline.resultsBucket,
+      runId: pipeline.runId,
+      ...(stack ? { stack } : {})
+    });
+    result.reporterErrors.push({ reporter: 's3', message, ...(stack ? { stack } : {}) });
+  }
 }
 
 export function classifyOpenApiError(source: string, err: unknown): string {
@@ -225,16 +262,7 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
   });
 
   if (pipeline) {
-    logger.debug('Uploading report to S3', {
-      event: 'sentinel.s3.upload.start',
-      bucket: pipeline.resultsBucket,
-      runId: pipeline.runId
-    });
-    await uploadReportToS3(pipeline.resultsBucket, pipeline.runId, result);
-    logger.info(
-      `Report uploaded to s3://${pipeline.resultsBucket}/results/${pipeline.runId}.json`,
-      { event: 'sentinel.s3.uploaded', bucket: pipeline.resultsBucket, runId: pipeline.runId }
-    );
+    await uploadPipelineReport(pipeline, result, logger);
   }
 
   const hasHigh = result.findings.some((f) => f.severity === 'high' || f.severity === 'critical');
