@@ -23,8 +23,10 @@ program
   )
   .option('-c, --config <path>', 'Path to sentinel.config.json', 'sentinel.config.json')
   .option('--openapi <pathOrUrl>', 'OpenAPI file path or URL')
-  .option('-o, --out <dir>', 'Output directory', './sentinel-out')
-  .option('-v, --verbose', 'Verbose logging', false)
+  // No commander defaults here: an omitted flag must stay `undefined` so the
+  // config file's `output.dir` / `verbose` can take effect.
+  .option('-o, --out <dir>', 'Output directory (default: config output.dir, else ./sentinel-out)')
+  .option('-v, --verbose', 'Verbose logging (default: config verbose, else off)')
   .action(async (opts) => {
     const { exitCode } = await scanCommand({
       version,
