@@ -462,17 +462,20 @@ export function authSuite(): Suite {
           bodiesMatch: boolean;
         }> = [];
 
-        // Bound total work by the per-suite request cap (one probe unit per
-        // candidate id, each issuing a request per identity plus the guard). One
-        // confirmed access per endpoint is enough to flag it, so stop sweeping an
-        // endpoint's remaining ids once it's confirmed and spend the leftover
-        // budget on other endpoints instead.
+        // Bound total work by the per-suite request cap. Each probe unit (one
+        // candidate id) fires a request per identity plus the unauthenticated
+        // guard, so charge that real cost against the cap rather than one-per-id
+        // — otherwise this section alone burns (identities + 1)× the cap. Only
+        // start a unit we can fully afford. One confirmed access per endpoint is
+        // enough to flag it, so stop sweeping an endpoint's remaining ids once
+        // it's confirmed and spend the leftover budget on other endpoints.
+        const requestsPerUnit = identities.length + 1;
         let budget = cap;
         for (const ep of objectEndpoints) {
-          if (budget <= 0) break;
+          if (budget < requestsPerUnit) break;
           for (const id of BOLA_CANDIDATE_IDS) {
-            if (budget <= 0) break;
-            budget--;
+            if (budget < requestsPerUnit) break;
+            budget -= requestsPerUnit;
 
             const requestPath = `${basePath}${ep.path.replace(`{${ep.paramName}}`, String(id))}`;
             const endpointLabel = `GET ${requestPath}`;

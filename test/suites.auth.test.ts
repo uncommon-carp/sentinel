@@ -239,8 +239,9 @@ describe('auth suite — BOLA probe', () => {
   };
 
   // probePaths [] so the only requests the suite makes are the BOLA probe's,
-  // keeping the order-based fetch mock queue easy to reason about. cap bounds the
-  // candidate-id sweep (cap 1 → only id=1 → exactly 3 requests: identityA, identityB, unauth).
+  // keeping the order-based fetch mock queue easy to reason about. cap is a
+  // request budget: a two-identity unit costs 3 requests (identityA, identityB,
+  // unauth guard), so cap 3 buys exactly one candidate id.
   const API_KEY_HEADER = 'x-api-key';
 
   function bolaCtx(opts: {
@@ -307,7 +308,7 @@ describe('auth suite — BOLA probe', () => {
       { status: 401, bodyText: 'unauthorized' }
     ]);
 
-    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 1 }));
+    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 3 }));
 
     const finding = findings.find((f) => f.id === 'auth.bola_object_access');
     expect(finding).toBeDefined();
@@ -333,7 +334,7 @@ describe('auth suite — BOLA probe', () => {
       { status: 401, bodyText: 'unauthorized' }
     ]);
 
-    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 1 }));
+    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 3 }));
 
     expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
   });
@@ -345,7 +346,7 @@ describe('auth suite — BOLA probe', () => {
       { status: 200, bodyText: 'public' }
     ]);
 
-    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 1 }));
+    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 3 }));
 
     expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
   });
@@ -390,9 +391,53 @@ describe('auth suite — BOLA probe', () => {
     );
 
     const findings = await authSuite().run(
-      bolaCtx({ identityNames: ['alice', 'bob'], cap: 1, authType: 'apiKey' })
+      bolaCtx({ identityNames: ['alice', 'bob'], cap: 3, authType: 'apiKey' })
     );
 
     expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeDefined();
+  });
+
+  it('charges the real per-unit request cost against the cap (never exceeds maxRequestsPerSuite)', async () => {
+    // Two object endpoints, but cap 3 only affords a single two-identity unit
+    // (3 requests: identityA, identityB, unauth guard). The responses are all
+    // 401 so nothing is flagged and nothing early-outs — if the budget were
+    // charged one-per-id instead of per-unit it would start a second unit and
+    // the 4th request would exhaust the mocked queue and throw.
+    const twoEndpointSpec: LoadedApiSpec = {
+      source: 'test',
+      spec: {
+        servers: [{ url: `${baseUrl}/api/v2` }],
+        paths: {
+          '/users/{id}': {
+            get: {
+              parameters: [{ name: 'id', in: 'path', schema: { type: 'integer' } }],
+              responses: { 200: {} }
+            }
+          },
+          '/orders/{id}': {
+            get: {
+              parameters: [{ name: 'id', in: 'path', schema: { type: 'integer' } }],
+              responses: { 200: {} }
+            }
+          }
+        }
+      },
+      endpoints: [
+        { method: 'get', path: '/users/{id}' },
+        { method: 'get', path: '/orders/{id}' }
+      ]
+    };
+    const fetchMock = mockFetchQueue([
+      { status: 401, bodyText: 'no' },
+      { status: 401, bodyText: 'no' },
+      { status: 401, bodyText: 'no' }
+    ]);
+
+    const findings = await authSuite().run(
+      bolaCtx({ identityNames: ['alice', 'bob'], cap: 3, api: twoEndpointSpec })
+    );
+
+    expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
