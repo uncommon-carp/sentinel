@@ -74,6 +74,40 @@ describe('CLI smoke', () => {
     expect(md).toContain('# Sentinel Report');
   });
 
+  it('writes to output.dir from the config file when --out is not passed', async () => {
+    // Regression: the CLI used to give --out a hardcoded default, so opts.out was
+    // never undefined and `opts.out ?? config.output.dir` always ignored the
+    // config. Here no `out` is passed (as commander now yields when the flag is
+    // absent), so the config's output.dir must win. All suites off ⇒ no HTTP.
+    const cfgDir = tmpDir();
+    const reportDir = path.join(cfgDir, 'from-config-out');
+    const configPath = path.join(cfgDir, 'sentinel.config.json');
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        suites: {
+          headers: false,
+          cors: false,
+          auth: false,
+          ratelimit: false,
+          inventory: false,
+          injection: false
+        },
+        output: { dir: reportDir, json: true, markdown: false }
+      }),
+      'utf-8'
+    );
+
+    const { outputDir } = await scanCommand({
+      version: '0.0.0-test',
+      url: 'https://api.example.com',
+      config: configPath
+    });
+
+    expect(outputDir).toBe(reportDir);
+    expect(fs.existsSync(path.join(reportDir, 'sentinel-report.json'))).toBe(true);
+  });
+
   it('warns and continues when --openapi points at a nonexistent file', async () => {
     const out = tmpDir();
     const configPath = path.join(out, 'sentinel.config.json');

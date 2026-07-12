@@ -20,6 +20,17 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
   it now maps to `identities[0].tokenUrl`, creating a `primary` identity if none is
   configured. Duplicate identity names are rejected.
 
+### Fixed
+
+- **`output.dir` and `verbose` in the config file are now honored.** The `scan`
+  command gave `--out` and `--verbose` hardcoded commander defaults
+  (`./sentinel-out` / `false`), so those options were never absent and always
+  shadowed the config file — a `sentinel.config.json` setting `output.dir` or
+  `verbose` had no effect unless the matching flag was also passed. The defaults
+  were removed; an omitted flag now falls back to the config value (and, failing
+  that, the schema default `./sentinel-out` / `false`), while an explicit flag
+  still overrides. No change when neither flag nor config sets them.
+
 ### Added
 
 - **`auth.bola_object_access` (OWASP API1 — first BOLA coverage)**: when two or more
