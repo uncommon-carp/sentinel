@@ -11,10 +11,20 @@ export function makeConfig(
   return {
     target: { baseUrl },
     auth: {
-      type: authType,
+      identities:
+        authType === 'none'
+          ? []
+          : [
+              {
+                name: 'primary',
+                type: authType,
+                tokenMethod: 'GET',
+                tokenField: 'token',
+                ...(authType === 'bearer' ? { bearerToken: 'test-token' } : {})
+              }
+            ],
       probePaths: ['/'],
-      compareUnauthed: authType !== 'none',
-      bearerToken: authType === 'bearer' ? 'test-token' : undefined
+      compareUnauthed: authType !== 'none'
     },
     suites: {
       headers: true,

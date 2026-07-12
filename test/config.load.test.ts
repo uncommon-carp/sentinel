@@ -124,16 +124,28 @@ describe('config/load', () => {
     }
   });
 
+  it('rejects the pre-array flat auth shape with an unrecognized-keys error', () => {
+    const result = SentinelConfigSchema.safeParse({
+      ...minimal,
+      auth: { type: 'bearer', bearerToken: 'x' }
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const formatted = result.error.issues.map(formatZodIssue);
+      expect(formatted).toContainEqual(expect.stringMatching(/auth: unrecognized key\(s\)/));
+    }
+  });
+
   it('formats an invalid enum value', () => {
     const result = SentinelConfigSchema.safeParse({
       ...minimal,
-      auth: { type: 'oauth' }
+      auth: { identities: [{ name: 'primary', type: 'oauth' }] }
     });
     expect(result.success).toBe(false);
     if (!result.success) {
       const formatted = result.error.issues.map(formatZodIssue);
       expect(formatted).toContainEqual(
-        expect.stringMatching(/auth\.type: expected one of .+ received 'oauth'/)
+        expect.stringMatching(/auth\.identities\.0\.type: expected one of .+ received 'oauth'/)
       );
     }
   });
@@ -239,24 +251,26 @@ describe('config/load', () => {
     expect(pipelineWarning).toBeUndefined();
   });
 
-  it('AUTH_TOKEN_URL sets auth.tokenUrl', async () => {
+  it('AUTH_TOKEN_URL sets the primary identity tokenUrl', async () => {
     process.env.TARGET_URL = 'http://localhost:3000';
     process.env.AUTH_TOKEN_URL = 'http://localhost:3000/api/v2/auth';
     const { config } = await loadConfig({});
-    expect(config.auth.tokenUrl).toBe('http://localhost:3000/api/v2/auth');
+    const primary = config.auth.identities[0];
+    expect(primary.name).toBe('primary');
+    expect(primary.tokenUrl).toBe('http://localhost:3000/api/v2/auth');
     // defaults for the other token fields still apply
-    expect(config.auth.tokenMethod).toBe('GET');
-    expect(config.auth.tokenField).toBe('token');
+    expect(primary.tokenMethod).toBe('GET');
+    expect(primary.tokenField).toBe('token');
   });
 
-  it('AUTH_TOKEN_URL env wins over file auth.tokenUrl', async () => {
+  it('AUTH_TOKEN_URL env wins over the file primary identity tokenUrl', async () => {
     const dir = tmpDir();
     const configPath = path.join(dir, 'sentinel.config.json');
     fs.writeFileSync(
       configPath,
       JSON.stringify({
         target: { baseUrl: 'http://localhost:3000' },
-        auth: { tokenUrl: 'http://from-file.example/token' }
+        auth: { identities: [{ name: 'alice', tokenUrl: 'http://from-file.example/token' }] }
       }),
       'utf-8'
     );
@@ -265,28 +279,41 @@ describe('config/load', () => {
     try {
       process.env.AUTH_TOKEN_URL = 'http://from-env.example/token';
       const { config } = await loadConfig({ configPath: 'sentinel.config.json' });
-      expect(config.auth.tokenUrl).toBe('http://from-env.example/token');
+      // Overrides the first identity's tokenUrl, preserving its other fields (name).
+      expect(config.auth.identities[0].name).toBe('alice');
+      expect(config.auth.identities[0].tokenUrl).toBe('http://from-env.example/token');
     } finally {
       process.chdir(oldCwd);
     }
   });
 
-  it('sanitizes token-endpoint request secrets in the report config', () => {
+  it('sanitizes token-endpoint request secrets for every identity in the report config', () => {
     const parsed = SentinelConfigSchema.parse({
       target: { baseUrl: 'http://localhost:3000' },
       auth: {
-        type: 'bearer',
-        bearerToken: 'fetched-jwt',
-        tokenUrl: 'http://localhost:3000/api/v2/auth',
-        tokenRequestHeaders: { authorization: 'Basic c2VjcmV0' },
-        tokenRequestBody: 'client_secret=hunter2'
+        identities: [
+          {
+            name: 'primary',
+            type: 'bearer',
+            bearerToken: 'fetched-jwt',
+            tokenUrl: 'http://localhost:3000/api/v2/auth',
+            tokenRequestHeaders: { authorization: 'Basic c2VjcmV0' },
+            tokenRequestBody: 'client_secret=hunter2'
+          },
+          { name: 'bob', type: 'bearer', bearerToken: 'bob-jwt' }
+        ]
       }
     });
-    const sanitized = sanitizeConfigForReport(parsed) as { auth: Record<string, unknown> };
-    expect(sanitized.auth.bearerToken).toBe('***');
-    expect(sanitized.auth.tokenRequestBody).toBe('***');
-    expect(sanitized.auth.tokenRequestHeaders).toEqual({ authorization: '***' });
+    const sanitized = sanitizeConfigForReport(parsed) as {
+      auth: { identities: Array<Record<string, unknown>> };
+    };
+    const [primary, secondary] = sanitized.auth.identities;
+    expect(primary.bearerToken).toBe('***');
+    expect(primary.tokenRequestBody).toBe('***');
+    expect(primary.tokenRequestHeaders).toEqual({ authorization: '***' });
     // tokenUrl is not a secret — stays visible
-    expect(sanitized.auth.tokenUrl).toBe('http://localhost:3000/api/v2/auth');
+    expect(primary.tokenUrl).toBe('http://localhost:3000/api/v2/auth');
+    // secondary identity's token is redacted too
+    expect(secondary.bearerToken).toBe('***');
   });
 });

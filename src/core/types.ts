@@ -47,6 +47,11 @@ export type SuiteContext = {
   logger: import('./logger.js').Logger;
   api?: import('../openapi/types.js').LoadedApiSpec;
   selectedEndpoints?: SelectedEndpoint[];
+  // Named authenticated sessions for multi-identity checks (Tier-2, e.g. BOLA).
+  // identities[0] is the same identity as `http` (the primary/default session);
+  // undefined when no identity is configured. Suites that don't do cross-identity
+  // probing ignore this and use `http`.
+  identities?: { name: string; http: import('../http/client.js').HttpClient }[];
 };
 
 export type SuiteError = {

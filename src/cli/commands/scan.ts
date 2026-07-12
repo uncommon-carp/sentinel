@@ -1,6 +1,7 @@
 import { loadConfig, sanitizeConfigForReport } from '../../config/load.js';
 import { uploadReportToS3 } from '../../reporters/s3.js';
 import { createLogger } from '../../core/logger.js';
+import type { Logger } from '../../core/logger.js';
 import { HttpClient } from '../../http/client.js';
 import { fetchAuthToken } from '../../http/token.js';
 import { buildSuites } from '../../suites/index.js';
@@ -9,8 +10,10 @@ import { markdownReporter } from '../../reporters/markdown.js';
 import { runScan } from '../../core/runner.js';
 import { loadOpenApi } from '../../openapi/load.js';
 import { selectEndpoints } from '../../core/endpoints.js';
-import type { SentinelConfig } from '../../config/schema.js';
+import type { Credential, NamedIdentity } from '../../config/schema.js';
 import type { LoadedApiSpec } from '../../openapi/types.js';
+
+export type IdentitySession = { name: string; http: HttpClient; credential: NamedIdentity };
 
 export type ScanCommandOptions = {
   version: string;
@@ -21,18 +24,77 @@ export type ScanCommandOptions = {
   verbose?: boolean;
 };
 
-export function buildAuthHeader(auth: SentinelConfig['auth']): Record<string, string> {
-  if (auth.type === 'bearer' && auth.bearerToken) {
-    return { authorization: `Bearer ${auth.bearerToken}` };
+export function buildAuthHeader(cred: Credential): Record<string, string> {
+  if (cred.type === 'bearer' && cred.bearerToken) {
+    return { authorization: `Bearer ${cred.bearerToken}` };
   }
-  if (auth.type === 'apiKey' && auth.apiKeyHeader && auth.apiKeyValue) {
-    return { [auth.apiKeyHeader]: auth.apiKeyValue };
+  if (cred.type === 'apiKey' && cred.apiKeyHeader && cred.apiKeyValue) {
+    return { [cred.apiKeyHeader]: cred.apiKeyValue };
   }
-  if (auth.type === 'basic' && auth.basicUser && auth.basicPass) {
-    const encoded = Buffer.from(`${auth.basicUser}:${auth.basicPass}`).toString('base64');
+  if (cred.type === 'basic' && cred.basicUser && cred.basicPass) {
+    const encoded = Buffer.from(`${cred.basicUser}:${cred.basicPass}`).toString('base64');
     return { authorization: `Basic ${encoded}` };
   }
   return {};
+}
+
+// Resolve a credential's dynamic token (Tier-1): if tokenUrl is set, fetch a
+// bearer token once and fold it in. Failure is fatal by design (the caller asked
+// for authenticated scanning) — the thrown error propagates to cli/index.ts (exit 3).
+export async function resolveIdentityToken(
+  cred: NamedIdentity,
+  opts: { logger: Logger; timeoutMs: number }
+): Promise<NamedIdentity> {
+  if (!cred.tokenUrl) return cred;
+  const token = await fetchAuthToken(
+    {
+      tokenUrl: cred.tokenUrl,
+      method: cred.tokenMethod,
+      field: cred.tokenField,
+      ...(cred.tokenRequestHeaders ? { headers: cred.tokenRequestHeaders } : {}),
+      ...(cred.tokenRequestBody ? { body: cred.tokenRequestBody } : {}),
+      timeoutMs: opts.timeoutMs
+    },
+    opts.logger
+  );
+  return { ...cred, type: 'bearer', bearerToken: token };
+}
+
+// Resolve each configured identity and give it its own HttpClient session, so
+// suites can hold several authenticated identities at once (Tier-2). identities[0]
+// is the primary/default session. Never logs token values.
+export async function buildIdentitySessions(
+  identities: NamedIdentity[],
+  opts: {
+    baseUrl: string;
+    timeoutMs: number;
+    defaultHeaders: Record<string, string>;
+    logger: Logger;
+  }
+): Promise<IdentitySession[]> {
+  const sessions: IdentitySession[] = [];
+  for (const identity of identities) {
+    const resolved = await resolveIdentityToken(identity, {
+      logger: opts.logger,
+      timeoutMs: opts.timeoutMs
+    });
+    const http = new HttpClient(
+      {
+        baseUrl: opts.baseUrl,
+        timeoutMs: opts.timeoutMs,
+        defaultHeaders: opts.defaultHeaders,
+        authHeader: () => buildAuthHeader(resolved),
+        authType: resolved.type
+      },
+      opts.logger
+    );
+    opts.logger.debug('Resolved identity session', {
+      event: 'auth.identity.resolved',
+      name: identity.name
+    });
+    sessions.push({ name: identity.name, http, credential: resolved });
+  }
+  return sessions;
 }
 
 export function classifyOpenApiError(source: string, err: unknown): string {
@@ -69,43 +131,45 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     logger.warn(pipelineWarning, { event: 'sentinel.pipeline.partial' });
   }
 
-  // Dynamic token auth (Tier-1): if a tokenUrl is configured, fetch a token
-  // once and resolve it into a bearer credential the rest of the scan uses.
-  // A failure here is fatal by design — the caller asked for authenticated
-  // scanning, so scanning unauthenticated would produce misleading findings.
-  // The thrown error propagates to cli/index.ts, which exits 3.
+  const defaultHeaders = {
+    'user-agent': `sentinel/${opts.version}`,
+    accept: 'application/json,*/*'
+  };
+
+  // Resolve every configured identity into its own session (Tier-1 dynamic
+  // tokens are fetched here; a failure is fatal and propagates to cli/index.ts →
+  // exit 3). identities[0] is the primary session every suite uses via ctx.http;
+  // additional identities are exposed on ctx.identities for multi-identity checks.
   let scanConfig = config;
   let sanitizedConfig = sanitized;
-  if (config.auth.tokenUrl) {
-    const token = await fetchAuthToken(
+  const sessions = await buildIdentitySessions(config.auth.identities, {
+    baseUrl: config.target.baseUrl,
+    timeoutMs: config.active.timeoutMs,
+    defaultHeaders,
+    logger
+  });
+
+  if (sessions.length > 0) {
+    // Fold resolved credentials back into the config so the report's sanitized
+    // snapshot redacts the fetched tokens.
+    scanConfig = {
+      ...config,
+      auth: { ...config.auth, identities: sessions.map((s) => s.credential) }
+    };
+    sanitizedConfig = sanitizeConfigForReport(scanConfig);
+  }
+
+  const primarySession = sessions[0];
+  const http =
+    primarySession?.http ??
+    new HttpClient(
       {
-        tokenUrl: config.auth.tokenUrl,
-        method: config.auth.tokenMethod,
-        field: config.auth.tokenField,
-        ...(config.auth.tokenRequestHeaders ? { headers: config.auth.tokenRequestHeaders } : {}),
-        ...(config.auth.tokenRequestBody ? { body: config.auth.tokenRequestBody } : {}),
-        timeoutMs: config.active.timeoutMs
+        baseUrl: scanConfig.target.baseUrl,
+        timeoutMs: scanConfig.active.timeoutMs,
+        defaultHeaders
       },
       logger
     );
-    scanConfig = { ...config, auth: { ...config.auth, type: 'bearer', bearerToken: token } };
-    sanitizedConfig = sanitizeConfigForReport(scanConfig);
-    logger.debug('Resolved auth token from tokenUrl', { event: 'auth.token.resolved' });
-  }
-
-  const http = new HttpClient(
-    {
-      baseUrl: scanConfig.target.baseUrl,
-      timeoutMs: scanConfig.active.timeoutMs,
-      defaultHeaders: {
-        'user-agent': `sentinel/${opts.version}`,
-        accept: 'application/json,*/*'
-      },
-      authHeader: () => buildAuthHeader(scanConfig.auth),
-      authType: scanConfig.auth.type
-    },
-    logger
-  );
 
   const suites = buildSuites(scanConfig.suites);
 
@@ -138,10 +202,19 @@ export async function scanCommand(opts: ScanCommandOptions): Promise<{
     ...(api ? { api } : {})
   });
 
+  const identities = sessions.map((s) => ({ name: s.name, http: s.http }));
+
   const result = await runScan({
     suites,
     reporters,
-    ctx: { http, config: scanConfig, logger, selectedEndpoints, ...(api ? { api } : {}) },
+    ctx: {
+      http,
+      config: scanConfig,
+      logger,
+      selectedEndpoints,
+      ...(api ? { api } : {}),
+      ...(identities.length > 0 ? { identities } : {})
+    },
     sanitizedConfig,
     outputDir,
     meta: {
