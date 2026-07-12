@@ -8,11 +8,12 @@ Severities: `critical` › `high` › `medium` › `low` › `info`
 
 ## auth
 
-Checks HTTP auth semantics and basic auth enforcement behavior. Probes configurable `auth.probePaths` (default `["/"]`).
+Checks HTTP auth semantics and basic auth enforcement behavior. Probes configurable `auth.probePaths` (default `["/"]`). With two or more configured identities (`auth.identities`, Tier-2) it also runs a cross-identity BOLA probe against object-level endpoints discovered from the OpenAPI spec.
 
 | ID                                  | Severity | Title                                                   | OWASP                       |
 | ----------------------------------- | -------- | ------------------------------------------------------- | --------------------------- |
 | `auth.jwt_alg_none`                 | critical | JWT with alg:none detected in response                  | API2: Broken Authentication |
+| `auth.bola_object_access`           | high     | Object-level endpoint served the same resource to multiple identities | API1: Broken Object Level Authorization |
 | `auth.invalid_token_accepted`       | high     | Protected endpoint accepted an invalid token            | API2: Broken Authentication |
 | `auth.jwt_weak_signature`           | high     | JWT with a weak or stub signature detected in response  | API2: Broken Authentication |
 | `auth.jwt_expired_accepted`         | high     | Server issued an already-expired JWT                    | API2: Broken Authentication |
@@ -28,6 +29,13 @@ Checks HTTP auth semantics and basic auth enforcement behavior. Probes configura
 
 A JWT using the `alg:none` algorithm was found in a response. Tokens with `alg:none` carry no cryptographic signature; servers that accept them can be trivially bypassed. An attacker can forge arbitrary JWT claims — including elevated roles — and gain unauthorized access with no cryptographic barrier.  
 **Remediation:** Reject JWTs with `alg:none` server-side and enforce an explicit algorithm allowlist.
+
+#### `auth.bola_object_access` — high
+
+An object-level endpoint (a GET path keyed by a single enumerable resource id, e.g. `/users/{id}`, discovered from the OpenAPI spec) returned a byte-identical resource to two or more distinct authenticated identities while rejecting the unauthenticated request. The endpoint authenticates the caller but never checks that the caller is authorized for the *specific* object, so any authenticated identity can read another identity's records by enumerating the id (BOLA / IDOR — OWASP API1). The unauthenticated request being rejected is what separates this from a fully public route (`auth.possible_bypass_probe`): auth is present, but object-level authorization is missing.  
+**Remediation:** Enforce object-level authorization on every request — verify the authenticated identity may access the specific object before returning it, not just that the caller is authenticated. Use non-enumerable identifiers as defense-in-depth.
+
+**Requires** at least two configured identities (`auth.identities`, Tier-2) so the probe can compare cross-identity access, and an OpenAPI spec advertising the object endpoint. v1 covers integer/number path ids only; opaque/UUID ids are not yet synthesized. Evidence omits the response bodies on purpose — the leaked records carry the sensitive fields (emails, API keys) the finding is about.
 
 #### `auth.invalid_token_accepted` — high
 
