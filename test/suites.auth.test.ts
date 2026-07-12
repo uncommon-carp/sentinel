@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { authSuite } from '../src/suites/auth.js';
 import { mockFetchQueue } from './helpers/fetchMock.js';
-import { makeSuiteCtx } from './helpers/makeConfig.js';
+import { makeSuiteCtx, makeConfig } from './helpers/makeConfig.js';
+import { HttpClient } from '../src/http/client.js';
+import { createLogger } from '../src/core/logger.js';
+import type { SuiteContext } from '../src/core/types.js';
+import type { LoadedApiSpec } from '../src/openapi/types.js';
 
 // Default signature is a realistic 32-byte value (43 base64url chars) so tokens
 // don't incidentally trip auth.jwt_weak_signature; pass a shorter one to test it.
@@ -211,5 +215,138 @@ describe('auth suite', () => {
     expect(finding).toBeDefined();
     expect(finding?.severity).toBe('low');
     expect(finding?.evidence?.ttlSeconds as number).toBeGreaterThan(86400);
+  });
+});
+
+describe('auth suite — BOLA probe', () => {
+  const baseUrl = 'https://api.example.com';
+
+  // A spec advertising one object endpoint (integer id) under /api/v2.
+  const bolaSpec: LoadedApiSpec = {
+    source: 'test',
+    spec: {
+      servers: [{ url: `${baseUrl}/api/v2` }],
+      paths: {
+        '/users/{id}': {
+          get: {
+            parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+            responses: { 200: {} }
+          }
+        }
+      }
+    },
+    endpoints: [{ method: 'get', path: '/users/{id}' }]
+  };
+
+  // probePaths [] so the only requests the suite makes are the BOLA probe's,
+  // keeping the order-based fetch mock queue easy to reason about. cap bounds the
+  // candidate-id sweep (cap 1 → only id=1 → exactly 3 requests: identityA, identityB, unauth).
+  function bolaCtx(opts: {
+    identityNames: string[];
+    cap?: number;
+    api?: LoadedApiSpec | undefined;
+  }): SuiteContext {
+    const logger = createLogger({ verbose: false });
+    const mkHttp = (token: string) =>
+      new HttpClient(
+        {
+          baseUrl,
+          timeoutMs: 8000,
+          authHeader: () => ({ authorization: `Bearer ${token}` }),
+          authType: 'bearer'
+        },
+        logger
+      );
+    const identities = opts.identityNames.map((name) => ({ name, http: mkHttp(`${name}-token`) }));
+    const config = makeConfig(baseUrl, 'bearer', {
+      auth: {
+        identities: opts.identityNames.map((name) => ({
+          name,
+          type: 'bearer',
+          bearerToken: `${name}-token`,
+          tokenMethod: 'GET',
+          tokenField: 'token'
+        })),
+        probePaths: [],
+        compareUnauthed: false
+      },
+      active: { maxRequestsPerSuite: opts.cap ?? 40, timeoutMs: 8000 }
+    });
+    return {
+      http: identities[0]!.http,
+      config,
+      logger,
+      identities,
+      ...('api' in opts ? { api: opts.api } : { api: bolaSpec })
+    };
+  }
+
+  it('flags BOLA when two identities read the same object and unauth is rejected', async () => {
+    // Order per id: identityA, identityB, unauth.
+    mockFetchQueue([
+      { status: 200, bodyText: '{"id":1,"owner":"alice"}' },
+      { status: 200, bodyText: '{"id":1,"owner":"alice"}' },
+      { status: 401, bodyText: 'unauthorized' }
+    ]);
+
+    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 1 }));
+
+    const finding = findings.find((f) => f.id === 'auth.bola_object_access');
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe('high');
+    expect(finding?.owasp).toContain('API1');
+    const accesses = (finding?.evidence as { accesses: Array<Record<string, unknown>> }).accesses;
+    expect(accesses[0]).toMatchObject({
+      endpoint: 'GET /api/v2/users/1',
+      resourceId: 1,
+      unauthStatus: 401,
+      bodiesMatch: true
+    });
+    expect(accesses[0]!.identities).toEqual(expect.arrayContaining(['alice', 'bob']));
+    // The leaked record body must not be copied into the report.
+    expect(JSON.stringify(finding?.evidence)).not.toContain('owner');
+  });
+
+  it('does not flag when each identity only accesses its own object', async () => {
+    // Secure fixture: alice reads id=1 (200), bob is forbidden (403), unauth 401.
+    mockFetchQueue([
+      { status: 200, bodyText: '{"id":1,"owner":"alice"}' },
+      { status: 403, bodyText: 'forbidden' },
+      { status: 401, bodyText: 'unauthorized' }
+    ]);
+
+    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 1 }));
+
+    expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
+  });
+
+  it('does not flag a public object when the unauthenticated request also succeeds', async () => {
+    mockFetchQueue([
+      { status: 200, bodyText: 'public' },
+      { status: 200, bodyText: 'public' },
+      { status: 200, bodyText: 'public' }
+    ]);
+
+    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice', 'bob'], cap: 1 }));
+
+    expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
+  });
+
+  it('skips the probe (no requests) when fewer than two identities are configured', async () => {
+    mockFetchQueue([]);
+
+    const findings = await authSuite().run(bolaCtx({ identityNames: ['alice'], cap: 1 }));
+
+    expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
+  });
+
+  it('skips the probe when no OpenAPI spec is available', async () => {
+    mockFetchQueue([]);
+
+    const findings = await authSuite().run(
+      bolaCtx({ identityNames: ['alice', 'bob'], cap: 1, api: undefined })
+    );
+
+    expect(findings.find((f) => f.id === 'auth.bola_object_access')).toBeUndefined();
   });
 });

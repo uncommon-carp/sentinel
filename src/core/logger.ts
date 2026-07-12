@@ -12,6 +12,7 @@ export type DebugEvent =
   | 'cors.probe'
   | 'auth.probe'
   | 'auth.jwt.inspected'
+  | 'auth.bola.probe'
   | 'auth.token.fetch'
   | 'auth.token.resolved'
   | 'ratelimit.probe'

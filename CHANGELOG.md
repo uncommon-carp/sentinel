@@ -22,6 +22,14 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ### Added
 
+- **`auth.bola_object_access` (OWASP API1 — first BOLA coverage)**: when two or more
+  identities are configured (`auth.identities`, Tier-2) and an OpenAPI spec is loaded,
+  the auth suite discovers object-level endpoints (GET paths keyed by a single
+  enumerable/integer id, e.g. `/users/{id}`) and probes each candidate id with every
+  identity plus one unauthenticated request. A resource returned byte-identically to
+  two or more distinct identities while the unauthenticated request is rejected is
+  flagged as broken object-level authorization. GET-only and non-mutating; evidence
+  omits response bodies so the leaked sensitive fields aren't copied into the report.
 - **Tier-2 multi-identity sessions**: each configured identity is resolved (static
   or `tokenUrl`) into its own `HttpClient` session and exposed to suites on
   `ctx.identities` (`[{ name, http }]`), so a check can hold two authenticated

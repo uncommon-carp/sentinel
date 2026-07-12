@@ -18,6 +18,7 @@
 
 import type { Suite, Finding, SelectedEndpoint } from '../core/types.js';
 import type { HttpResponse } from '../http/client.js';
+import { extractBasePath } from '../core/endpoints.js';
 
 const JWT_TTL_LIMIT = 86400;
 // HMAC-SHA256, the weakest standard JWS algorithm, produces a 32-byte (256-bit)
@@ -193,6 +194,63 @@ function corruptBearer(token: string): string {
     return `${parts[0]}.${parts[1]}.${parts[2]}x`;
   }
   return `${token}x`;
+}
+
+// BOLA (Broken Object Level Authorization, OWASP API1) probe support.
+//
+// v1 handles object endpoints keyed by an enumerable (integer) path parameter —
+// the common IDOR case and what the Anemone fixture uses. Opaque/UUID ids aren't
+// synthesized yet (that needs list-endpoint discovery — future work).
+const BOLA_CANDIDATE_IDS = [1, 2, 3, 4, 5];
+
+type ObjectEndpoint = { path: string; paramName: string };
+
+function asParamArray(value: unknown): Array<Record<string, unknown>> {
+  return Array.isArray(value) ? (value as Array<Record<string, unknown>>) : [];
+}
+
+function pathParamNames(path: string): string[] {
+  return [...path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
+}
+
+function pathParamSchemaType(
+  operation: Record<string, unknown>,
+  pathItem: Record<string, unknown>,
+  paramName: string
+): string | null {
+  // Operation-level params override path-level ones (OpenAPI merge rule).
+  for (const p of [
+    ...asParamArray(operation['parameters']),
+    ...asParamArray(pathItem['parameters'])
+  ]) {
+    if (p['in'] === 'path' && p['name'] === paramName) {
+      const schema = p['schema'] as Record<string, unknown> | undefined;
+      return typeof schema?.['type'] === 'string' ? (schema['type'] as string) : null;
+    }
+  }
+  return null;
+}
+
+// Object endpoints are GET operations whose path has exactly one `{param}` that
+// is declared `in: path` with an integer/number schema — i.e. a single
+// enumerable resource id we can synthesize candidate values for.
+function discoverObjectEndpoints(spec: Record<string, unknown>): ObjectEndpoint[] {
+  const paths = spec.paths as Record<string, unknown> | undefined;
+  if (!paths || typeof paths !== 'object') return [];
+  const out: ObjectEndpoint[] = [];
+  for (const [path, pathItemRaw] of Object.entries(paths)) {
+    const pathItem = pathItemRaw as Record<string, unknown> | undefined;
+    if (!pathItem) continue;
+    const operation = pathItem['get'] as Record<string, unknown> | undefined;
+    if (!operation) continue;
+    const params = pathParamNames(path);
+    if (params.length !== 1) continue;
+    const paramName = params[0]!;
+    const type = pathParamSchemaType(operation, pathItem, paramName);
+    if (type !== 'integer' && type !== 'number') continue;
+    out.push({ path, paramName });
+  }
+  return out;
 }
 
 export function authSuite(): Suite {
@@ -383,6 +441,110 @@ export function authSuite(): Suite {
               tags: ['auth', 'bypass']
             });
           }
+        }
+      }
+
+      // BOLA probe (OWASP API1). Requires an OpenAPI spec to discover object
+      // endpoints and at least two configured identities (Tier-2) to compare.
+      // GET-only and non-mutating, so it runs whenever both are present — no
+      // separate opt-in beyond the user configuring a second identity.
+      const identities = ctx.identities ?? [];
+      if (ctx.api && identities.length >= 2) {
+        const basePath = extractBasePath(ctx.api);
+        const objectEndpoints = discoverObjectEndpoints(ctx.api.spec);
+
+        // Bound total work by the per-suite request cap. Each unit issues one
+        // request per identity plus one unauthenticated guard request.
+        const probeUnits: { ep: ObjectEndpoint; id: number }[] = [];
+        for (const ep of objectEndpoints) {
+          for (const id of BOLA_CANDIDATE_IDS) probeUnits.push({ ep, id });
+        }
+
+        const accesses: Array<{
+          endpoint: string;
+          resourceId: number;
+          identities: string[];
+          statuses: Record<string, number>;
+          unauthStatus: number;
+          bodiesMatch: boolean;
+        }> = [];
+
+        for (const { ep, id } of probeUnits.slice(0, cap)) {
+          const requestPath = `${basePath}${ep.path.replace(`{${ep.paramName}}`, String(id))}`;
+          const endpointLabel = `GET ${requestPath}`;
+          logger.debug('BOLA probe', {
+            event: 'auth.bola.probe',
+            endpoint: endpointLabel,
+            resourceId: id
+          });
+
+          const perIdentity: { name: string; status: number; bodyText: string }[] = [];
+          for (const identity of identities) {
+            const res = await identity.http.request({ method: 'GET', path: requestPath });
+            perIdentity.push({ name: identity.name, status: res.status, bodyText: res.bodyText });
+          }
+
+          // Unauthenticated guard: an object the endpoint serves with no
+          // credential at all is public (or a full auth bypass, already covered
+          // by possible_bypass_probe) — not an object-level authorization gap.
+          const unauthRes = await identities[0]!.http.request({
+            method: 'GET',
+            path: requestPath,
+            headers: { authorization: '' }
+          });
+          if (unauthRes.status >= 200 && unauthRes.status < 300) continue;
+
+          // Group the 2xx responses by body. A body returned to two or more
+          // distinct identities is the same object served across identities —
+          // the BOLA signal (identity B received the record identity A did).
+          const byBody = new Map<string, Set<string>>();
+          for (const r of perIdentity) {
+            if (r.status < 200 || r.status >= 300) continue;
+            if (!byBody.has(r.bodyText)) byBody.set(r.bodyText, new Set());
+            byBody.get(r.bodyText)!.add(r.name);
+          }
+          const shared = [...byBody.values()].find((names) => names.size >= 2);
+          if (shared) {
+            const statuses: Record<string, number> = {};
+            for (const r of perIdentity) statuses[r.name] = r.status;
+            accesses.push({
+              endpoint: endpointLabel,
+              resourceId: id,
+              identities: [...shared],
+              statuses,
+              unauthStatus: unauthRes.status,
+              bodiesMatch: true
+            });
+          }
+        }
+
+        if (accesses.length > 0) {
+          findings.push({
+            id: 'auth.bola_object_access',
+            title: 'Object-level endpoint served the same resource to multiple identities',
+            severity: 'high',
+            description:
+              `${accesses.length} object access(es) returned a byte-identical resource to two or ` +
+              'more distinct authenticated identities while rejecting the unauthenticated request. ' +
+              'The endpoint authenticates the caller but does not verify that the caller is ' +
+              'authorized for the specific object, so any authenticated identity can read another ' +
+              "identity's records by enumerating the resource id (BOLA / IDOR).",
+            whyItMatters:
+              'Broken object-level authorization is the most common and impactful API vulnerability ' +
+              '(OWASP API1): an attacker with any valid account can enumerate object ids and read or ' +
+              "modify other users' data because the endpoint never checks ownership.",
+            remediation:
+              'Enforce object-level authorization on every request — verify the authenticated ' +
+              'identity may access the specific object before returning it, not just that the caller ' +
+              'is authenticated. Use non-enumerable identifiers as defense-in-depth.',
+            owasp: 'API1: Broken Object Level Authorization',
+            // Evidence deliberately omits response bodies: the leaked records
+            // carry sensitive fields (emails, API keys) — the very data the
+            // finding is about. Statuses and identity names are enough to act on.
+            evidence: { accesses },
+            suite: 'auth',
+            tags: ['auth', 'bola', 'api1']
+          });
         }
       }
 
