@@ -6,7 +6,27 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: auth config is now a named-identities array.** The flat credential
+  fields on `auth` (`type`, `bearerToken`, `basic*`, `apiKey*`, `tokenUrl`, and the
+  `token*` knobs) have moved into `auth.identities: [{ name, …credentials }]`.
+  `identities[0]` is the primary/default session every suite uses; additional
+  entries are held as separate authenticated sessions for multi-identity checks
+  (Tier-2 — BOLA/BFLA). `probePaths`/`compareUnauthed` stay at the `auth` level.
+  Migrate `auth: { type: 'bearer', bearerToken: 'x' }` to
+  `auth: { identities: [{ name: 'primary', type: 'bearer', bearerToken: 'x' }] }`.
+  The `AUTH_TOKEN_URL` env var (Weir pipeline contract) is unchanged in behavior —
+  it now maps to `identities[0].tokenUrl`, creating a `primary` identity if none is
+  configured. Duplicate identity names are rejected.
+
 ### Added
+
+- **Tier-2 multi-identity sessions**: each configured identity is resolved (static
+  or `tokenUrl`) into its own `HttpClient` session and exposed to suites on
+  `ctx.identities` (`[{ name, http }]`), so a check can hold two authenticated
+  identities at once — the foundation for the BOLA probe. Resolved tokens for every
+  identity are redacted in the report's sanitized config.
 
 - **Dynamic token auth (`auth.tokenUrl`)**: Sentinel can fetch a bearer token from an endpoint before scanning and use it for all authenticated requests, instead of requiring a static `bearerToken`. Configurable via `tokenMethod` (`GET`/`POST`, default `GET`), `tokenField` (JSON field holding the token, default `token`), and optional `tokenRequestHeaders` / `tokenRequestBody` for token endpoints that need a POST with a client secret. Enables Tier-1 authenticated scanning without credentials leaving the scanner.
 - **`AUTH_TOKEN_URL` env var**: Maps to `auth.tokenUrl` (env wins over config file), mirroring `TARGET_URL`. This is how the CI pipeline supplies a target's token endpoint without a config file, keeping the orchestrator credential-free.

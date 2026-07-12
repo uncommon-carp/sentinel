@@ -1,14 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { buildAuthHeader } from '../src/cli/commands/scan.js';
-import type { SentinelConfig } from '../src/config/schema.js';
+import type { Credential } from '../src/config/schema.js';
 
-type AuthConfig = SentinelConfig['auth'];
-
-function makeAuth(overrides: Partial<AuthConfig>): AuthConfig {
+function makeAuth(overrides: Partial<Credential>): Credential {
   return {
     type: 'none',
-    probePaths: ['/'],
-    compareUnauthed: false,
+    tokenMethod: 'GET',
+    tokenField: 'token',
     ...overrides
   };
 }

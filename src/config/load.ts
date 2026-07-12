@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { SentinelConfigSchema, type SentinelConfig } from './schema.js';
+import { SentinelConfigSchema, type SentinelConfig, type Credential } from './schema.js';
 import { expandEnvPlaceholders } from './env.js';
 import type { ZodIssue } from 'zod';
 
@@ -17,19 +17,24 @@ function readJsonIfExists(p: string): unknown | undefined {
   return JSON.parse(raw);
 }
 
-export function sanitizeConfigForReport(cfg: SentinelConfig): Record<string, unknown> {
-  const clone = structuredClone(cfg);
-  if (clone.auth.bearerToken) clone.auth.bearerToken = '***';
-  if (clone.auth.basicPass) clone.auth.basicPass = '***';
-  if (clone.auth.apiKeyValue) clone.auth.apiKeyValue = '***';
-  // Token-endpoint request material can carry secrets (e.g. a client secret
-  // interpolated via ${VAR}). tokenUrl itself is just a URL — leave it visible.
-  if (clone.auth.tokenRequestBody) clone.auth.tokenRequestBody = '***';
-  if (clone.auth.tokenRequestHeaders) {
-    clone.auth.tokenRequestHeaders = Object.fromEntries(
-      Object.keys(clone.auth.tokenRequestHeaders).map((k) => [k, '***'])
+// Redact credential secrets in place. tokenUrl itself is just a URL — left
+// visible; the resolved bearerToken and token-endpoint request material (which
+// can carry a client secret via ${VAR}) are not.
+function redactCredential(cred: Credential): void {
+  if (cred.bearerToken) cred.bearerToken = '***';
+  if (cred.basicPass) cred.basicPass = '***';
+  if (cred.apiKeyValue) cred.apiKeyValue = '***';
+  if (cred.tokenRequestBody) cred.tokenRequestBody = '***';
+  if (cred.tokenRequestHeaders) {
+    cred.tokenRequestHeaders = Object.fromEntries(
+      Object.keys(cred.tokenRequestHeaders).map((k) => [k, '***'])
     );
   }
+}
+
+export function sanitizeConfigForReport(cfg: SentinelConfig): Record<string, unknown> {
+  const clone = structuredClone(cfg);
+  for (const identity of clone.auth.identities) redactCredential(identity);
   return clone as Record<string, unknown>;
 }
 
@@ -58,6 +63,29 @@ export function formatZodIssue(issue: ZodIssue): string {
     default:
       return `${path}: ${issue.message}`;
   }
+}
+
+// Merge AUTH_TOKEN_URL (the Weir pipeline contract) into the primary identity's
+// tokenUrl. Creates identities[0] = { name: 'primary', tokenUrl } when the file
+// declared none, otherwise overrides the first identity's tokenUrl (env wins).
+function applyAuthTokenUrlEnv(
+  fileAuth: unknown,
+  envAuthTokenUrl: string | undefined
+): Record<string, unknown> {
+  const auth =
+    typeof fileAuth === 'object' && fileAuth !== null
+      ? { ...(fileAuth as Record<string, unknown>) }
+      : {};
+  if (!envAuthTokenUrl) return auth;
+
+  const existing = Array.isArray(auth.identities) ? [...(auth.identities as unknown[])] : [];
+  const first =
+    existing[0] && typeof existing[0] === 'object'
+      ? (existing[0] as Record<string, unknown>)
+      : { name: 'primary' };
+  existing[0] = { ...first, tokenUrl: envAuthTokenUrl };
+  auth.identities = existing;
+  return auth;
 }
 
 export type Pipeline = {
@@ -94,17 +122,10 @@ export async function loadConfig(args: LoadConfigArgs): Promise<{
     },
     // Only construct auth from file/env when either is present, so behavior is
     // unchanged when no auth is configured anywhere. AUTH_TOKEN_URL (the Weir
-    // pipeline contract) maps to auth.tokenUrl, mirroring TARGET_URL→baseUrl;
-    // env wins over file, consistent with target.
+    // pipeline contract) maps to the primary identity's tokenUrl —
+    // auth.identities[0] — mirroring TARGET_URL→baseUrl; env wins over file.
     ...(fileConfig.auth || envAuthTokenUrl
-      ? {
-          auth: {
-            ...(typeof fileConfig.auth === 'object' && fileConfig.auth !== null
-              ? (fileConfig.auth as Record<string, unknown>)
-              : {}),
-            ...(envAuthTokenUrl ? { tokenUrl: envAuthTokenUrl } : {})
-          }
-        }
+      ? { auth: applyAuthTokenUrlEnv(fileConfig.auth, envAuthTokenUrl) }
       : {}),
     ...(typeof args.verbose === 'boolean' ? { verbose: args.verbose } : {})
   };

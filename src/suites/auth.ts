@@ -208,7 +208,9 @@ export function authSuite(): Suite {
         .slice(0, cap)
         .map((path) => ({ method: 'get', path }));
 
-      const authConfigured = ctx.config.auth.type !== 'none';
+      // The primary identity (identities[0]) is the one ctx.http authenticates as.
+      const primary = ctx.config.auth.identities[0];
+      const authConfigured = (primary?.type ?? 'none') !== 'none';
 
       // Two credential overrides for the enforcement probe. Both win over the
       // HttpClient's injected auth header (the client merges authHeader() first,
@@ -220,20 +222,18 @@ export function authSuite(): Suite {
       // server that rejects it does so because the credential is invalid — not
       // because the auth scheme is wrong (which would be a false negative on the
       // exact case invalid_token_accepted is meant to catch).
-      if (ctx.config.auth.type === 'bearer') {
+      if (primary?.type === 'bearer') {
         clearedHeaders['authorization'] = '';
-        invalidHeaders['authorization'] = `Bearer ${corruptBearer(
-          ctx.config.auth.bearerToken ?? 'x'
-        )}`;
+        invalidHeaders['authorization'] = `Bearer ${corruptBearer(primary.bearerToken ?? 'x')}`;
       }
-      if (ctx.config.auth.type === 'basic') {
+      if (primary?.type === 'basic') {
         clearedHeaders['authorization'] = '';
         const bogus = Buffer.from('sentinel-invalid:sentinel-invalid').toString('base64');
         invalidHeaders['authorization'] = `Basic ${bogus}`;
       }
-      if (ctx.config.auth.type === 'apiKey' && ctx.config.auth.apiKeyHeader) {
-        clearedHeaders[ctx.config.auth.apiKeyHeader] = '';
-        invalidHeaders[ctx.config.auth.apiKeyHeader] = 'sentinel-invalid-key';
+      if (primary?.type === 'apiKey' && primary.apiKeyHeader) {
+        clearedHeaders[primary.apiKeyHeader] = '';
+        invalidHeaders[primary.apiKeyHeader] = 'sentinel-invalid-key';
       }
 
       for (const ep of toProbe) {

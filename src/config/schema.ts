@@ -1,27 +1,56 @@
 import { z } from 'zod';
 
+// A single set of credentials. Static (`bearer`/`basic`/`apiKey`) or, for Tier-1
+// dynamic auth, a `tokenUrl` that Sentinel fetches a bearer token from before
+// scanning (see cli/commands/scan.ts) — tokenUrl overrides the static `type`.
+const CredentialSchema = z.object({
+  type: z.enum(['none', 'bearer', 'basic', 'apiKey']).default('none'),
+  bearerToken: z.string().optional(),
+  basicUser: z.string().optional(),
+  basicPass: z.string().optional(),
+  apiKeyHeader: z.string().optional(),
+  apiKeyValue: z.string().optional(),
+
+  tokenUrl: z.string().url().optional(),
+  tokenMethod: z.enum(['GET', 'POST']).default('GET'),
+  tokenField: z.string().default('token'),
+  tokenRequestHeaders: z.record(z.string()).optional(),
+  tokenRequestBody: z.string().optional()
+});
+export type Credential = z.infer<typeof CredentialSchema>;
+
+// A credential with a name, so suites can reference distinct identities (Tier-2).
+const NamedIdentitySchema = CredentialSchema.extend({ name: z.string().min(1) });
+export type NamedIdentity = z.infer<typeof NamedIdentitySchema>;
+
+// Auth config. `identities` is an ordered list of authenticated identities:
+// identities[0] is the primary/default session every suite uses; additional
+// entries are held for multi-identity checks (Tier-2 — e.g. the BOLA probe
+// compares one identity's session against another). Empty ⇒ unauthenticated.
 const AuthSchema = z
   .object({
-    type: z.enum(['none', 'bearer', 'basic', 'apiKey']).default('none'),
-    bearerToken: z.string().optional(),
-    basicUser: z.string().optional(),
-    basicPass: z.string().optional(),
-    apiKeyHeader: z.string().optional(),
-    apiKeyValue: z.string().optional(),
-
-    // Dynamic token auth (Tier-1). When tokenUrl is set, Sentinel fetches a
-    // token before scanning and uses it as a bearer credential (see
-    // cli/commands/scan.ts). Overrides any statically-configured `type`.
-    tokenUrl: z.string().url().optional(),
-    tokenMethod: z.enum(['GET', 'POST']).default('GET'),
-    tokenField: z.string().default('token'),
-    tokenRequestHeaders: z.record(z.string()).optional(),
-    tokenRequestBody: z.string().optional(),
-
+    identities: z.array(NamedIdentitySchema).default([]),
     probePaths: z.array(z.string()).default(['/']),
     compareUnauthed: z.boolean().default(true)
   })
-  .default({ type: 'none' });
+  // Strict so the pre-array shape (flat `type`/`bearerToken`/`tokenUrl` on `auth`)
+  // fails loudly with an unrecognized-keys error rather than silently dropping the
+  // credentials and scanning unauthenticated.
+  .strict()
+  .superRefine((auth, ctx) => {
+    const seen = new Set<string>();
+    auth.identities.forEach((identity, i) => {
+      if (seen.has(identity.name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['identities', i, 'name'],
+          message: `duplicate identity name '${identity.name}'`
+        });
+      }
+      seen.add(identity.name);
+    });
+  })
+  .default({});
 
 const ActiveSchema = z
   .object({

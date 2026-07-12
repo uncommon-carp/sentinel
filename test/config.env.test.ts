@@ -31,9 +31,14 @@ describe('config env interpolation', () => {
         {
           target: { baseUrl: 'https://from-file.example' },
           auth: {
-            type: 'apiKey',
-            apiKeyHeader: 'x-api-key',
-            apiKeyValue: '${SENTINEL_API_KEY}'
+            identities: [
+              {
+                name: 'primary',
+                type: 'apiKey',
+                apiKeyHeader: 'x-api-key',
+                apiKeyValue: '${SENTINEL_API_KEY}'
+              }
+            ]
           }
         },
         null,
@@ -47,8 +52,8 @@ describe('config env interpolation', () => {
     try {
       const { config } = await loadConfig({ configPath: 'sentinel.config.json' });
 
-      expect(config.auth.type).toBe('apiKey');
-      expect(config.auth.apiKeyValue).toBe('super-secret');
+      expect(config.auth.identities[0].type).toBe('apiKey');
+      expect(config.auth.identities[0].apiKeyValue).toBe('super-secret');
     } finally {
       process.chdir(oldCwd);
     }
@@ -66,9 +71,14 @@ describe('config env interpolation', () => {
         {
           target: { baseUrl: 'https://from-file.example' },
           auth: {
-            type: 'apiKey',
-            apiKeyHeader: 'x-api-key',
-            apiKeyValue: '${SENTINEL_MISSING}'
+            identities: [
+              {
+                name: 'primary',
+                type: 'apiKey',
+                apiKeyHeader: 'x-api-key',
+                apiKeyValue: '${SENTINEL_MISSING}'
+              }
+            ]
           }
         },
         null,
@@ -100,9 +110,14 @@ describe('config env interpolation', () => {
         {
           target: { baseUrl: 'https://from-file.example' },
           auth: {
-            type: 'apiKey',
-            apiKeyHeader: 'x-api-key',
-            apiKeyValue: 'token=${SENTINEL_API_KEY}'
+            identities: [
+              {
+                name: 'primary',
+                type: 'apiKey',
+                apiKeyHeader: 'x-api-key',
+                apiKeyValue: 'token=${SENTINEL_API_KEY}'
+              }
+            ]
           }
         },
         null,
@@ -115,7 +130,7 @@ describe('config env interpolation', () => {
     process.chdir(dir);
     try {
       const { config } = await loadConfig({ configPath: 'sentinel.config.json' });
-      expect(config.auth.apiKeyValue).toBe('token=${SENTINEL_API_KEY}');
+      expect(config.auth.identities[0].apiKeyValue).toBe('token=${SENTINEL_API_KEY}');
     } finally {
       process.chdir(oldCwd);
     }
