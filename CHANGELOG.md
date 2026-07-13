@@ -45,7 +45,7 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
   still overrides. No change when neither flag nor config sets them.
 
 - **`examples/sentinel.config.example.json` no longer throws.** It still had the
-  pre-5.4 flat `auth: { type, ... }` shape, which `AuthSchema`'s `.strict()` now
+  pre-#92 flat `auth: { type, ... }` shape, which `AuthSchema`'s `.strict()` now
   rejects with an `unrecognized_keys` error — the example itself was broken.
   Dropped the redundant `type: "none"` (an empty/omitted `auth.identities` already
   means unauthenticated).

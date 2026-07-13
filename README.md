@@ -158,7 +158,7 @@ CLI flags override config file values; an omitted flag falls back to the config 
 | `TARGET_URL`     | Sets `target.baseUrl`. Equivalent to `-u`; the CLI flag takes precedence if both are provided.         |
 | `RESULTS_BUCKET` | S3 bucket name for pipeline mode. Both `RESULTS_BUCKET` and `RUN_ID` must be set to trigger an upload. |
 | `RUN_ID`         | Run identifier used as the S3 object key: `results/<RUN_ID>.json`.                                     |
-| `AUTH_TOKEN_URL` | Sets `auth.tokenUrl` (creating a `primary` identity if none is configured). How the CI pipeline (Weir) supplies a target's token endpoint without a config file — see [Auth](#auth). |
+| `AUTH_TOKEN_URL` | Sets `auth.identities[0].tokenUrl` (creating a `primary` identity if none is configured). How the CI pipeline (Weir) supplies a target's token endpoint without a config file — see [Auth](#auth). |
 
 When `RESULTS_BUCKET` and `RUN_ID` are both present, Sentinel uploads the JSON report to S3 after the scan using the task's IAM role — no credentials required. Local file output is unaffected. If only one of the two is set, a warning is logged and the upload is skipped.
 
