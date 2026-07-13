@@ -242,14 +242,23 @@ export function rateLimitSuite(): Suite {
       // finding ID rather than reusing ratelimit.no_429_on_burst.
       const sensitiveFlows = ctx.config.businessFlow.sensitivePaths
         .map((raw) => resolveSensitivePath(raw, ctx.api?.spec))
-        .filter((r): r is { method: string; path: string } => r !== null)
-        .slice(0, cap);
+        .filter((r): r is { method: string; path: string } => r !== null);
 
       const unthrottledFlows: Array<{ endpoint: string; statuses: number[] }> = [];
 
+      // Bound total phase-3 work by the per-suite request cap. Each flow can
+      // burn up to `burstCount` requests, so charge the actual number sent
+      // (runBurst may stop early on a 429) against a running budget rather
+      // than just capping the number of flows — otherwise N declared flows
+      // at the default burstCount could fire N × burstCount requests, far
+      // exceeding the cap.
+      let budget = cap;
       for (const flow of sensitiveFlows) {
+        if (budget < 1) break;
         const method = flow.method.toUpperCase();
-        const flowBurst = await runBurst(ctx, method, flow.path, burstCount, delayMs);
+        const flowBurstCount = Math.min(burstCount, budget);
+        const flowBurst = await runBurst(ctx, method, flow.path, flowBurstCount, delayMs);
+        budget -= flowBurst.length;
 
         const flowThrottled = flowBurst.find((r) => r.status === 429);
         const flowHasHeaders = flowBurst.some((r) => hasRateLimitHeaders(r.headers));
@@ -273,7 +282,7 @@ export function rateLimitSuite(): Suite {
               evidence: {
                 probeUrl: flowThrottled.url,
                 requestsBeforeThrottle: flowBurst.length,
-                burstCount,
+                burstCount: flowBurstCount,
                 delayMs
               },
               suite: 'ratelimit',

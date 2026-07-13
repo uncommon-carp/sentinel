@@ -124,11 +124,12 @@ describe('ratelimit suite — Phase 2: burst probe', () => {
 describe('ratelimit suite — Phase 3: sensitive business-flow burst probe', () => {
   function makeFlowCtx(
     sensitivePaths: string[],
-    overrides?: { burstCount?: number; api?: LoadedApiSpec }
+    overrides?: { burstCount?: number; api?: LoadedApiSpec; cap?: number }
   ) {
     const ctx = makeCtx({ burstCount: overrides?.burstCount ?? 2 });
     ctx.config.businessFlow.sensitivePaths = sensitivePaths;
     if (overrides?.api) ctx.api = overrides.api;
+    if (overrides?.cap) ctx.config.active.maxRequestsPerSuite = overrides.cap;
     return ctx;
   }
 
@@ -244,5 +245,32 @@ describe('ratelimit suite — Phase 3: sensitive business-flow burst probe', () 
     expect(finding).toBeDefined();
     const flows = finding?.evidence?.flows as Array<{ endpoint: string }>;
     expect(flows).toHaveLength(2);
+  });
+
+  it('bounds total phase-3 requests by the per-suite cap instead of firing burstCount per flow unconditionally', async () => {
+    // cap=3, burstCount=3, two declared flows: naively firing a full burst per
+    // flow would send 2 x 3 = 6 phase-3 requests, blowing well past the cap.
+    // Phase 1: 1 probe. Phase 2: 3 burst (min(burstCount, cap)). Phase 3:
+    // flow1 consumes the entire remaining budget (3 requests, all ok — no
+    // early 429 exit), leaving none for flow2. Only 7 mocked responses total
+    // (1 + 3 + 3); an 8th request (flow2) would throw "no more mocked responses".
+    const fetchMock = mockFetchQueue([
+      ok(), // phase 1
+      ok(),
+      ok(),
+      ok(), // phase 2
+      ok(),
+      ok(),
+      ok() // phase 3, flow1 only
+    ]);
+
+    const ctx = makeFlowCtx(['POST /api/v2/coupons/redeem', 'POST /api/v2/checkout'], {
+      burstCount: 3,
+      cap: 3
+    });
+
+    await rateLimitSuite().run(ctx);
+
+    expect(fetchMock).toHaveBeenCalledTimes(7);
   });
 });
