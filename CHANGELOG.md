@@ -6,6 +6,8 @@ The format is based on Keep a Changelog and this project adheres to Semantic Ver
 
 ## [Unreleased]
 
+## [1.0.0] — 2026-07-13
+
 ### Changed
 
 - **BREAKING: auth config is now a named-identities array.** The flat credential
