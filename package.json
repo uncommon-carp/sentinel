@@ -1,6 +1,6 @@
 {
   "name": "@uncommon-carp/sentinel",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "description": "OWASP API Security Top 10 Scanner - spec-driven, CI-ready, no proxy setup",
   "license": "MIT",
   "type": "module",
