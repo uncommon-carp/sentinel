@@ -29,9 +29,9 @@ Sentinel is an OWASP API Security Top 10 scanner for HTTP APIs. Point it at any 
 
 - HTTP security headers (HSTS, X-Content-Type-Options, Referrer-Policy)
 - CORS misconfiguration detection (wildcard + credentials, origin reflection)
-- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics, JWT inspection — alg:none, missing exp, expired tokens, excessive TTL)
-- Rate limiting detection (header inspection, burst probe, Retry-After coverage)
-- API inventory (sensitive endpoint exposure, stale version detection)
+- Auth behavior (401 + WWW-Authenticate semantics, cross-origin redirect detection, auth enforcement heuristics — including definitive invalid-token-accepted detection, JWT inspection — alg:none, weak/stub signatures, missing exp, expired tokens, excessive TTL); with authenticated identities configured, Tier-1 mass assignment detection and Tier-2 cross-identity BOLA detection
+- Rate limiting detection (header inspection, burst probe, Retry-After coverage, opt-in throttling checks on declared sensitive business flows)
+- API inventory (sensitive endpoint exposure, stale version detection, SSRF surface detection, excessive data exposure, GraphQL introspection)
 - Injection probes (SQL, NoSQL, template error-string detection; command injection with explicit opt-in), requires OpenAPI spec
 
 **Infrastructure:**
@@ -53,15 +53,15 @@ Full finding ID registry: [`FINDINGS.md`](./FINDINGS.md)
 
 | #          | Category                                        | Current Coverage                                                                                                                                                                                  |
 | ---------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| API1:2023  | Broken Object Level Authorization               | —                                                                                                                                                                                                 |
-| API2:2023  | Broken Authentication                           | **Auth suite**: 401 semantics, auth bypass heuristic, cross-origin redirect risk, JWT inspection (alg:none, missing exp, expired issuance, excessive TTL); **CORS suite**: wildcard + credentials |
-| API3:2023  | Broken Object Property Level Authorization      | —                                                                                                                                                                                                 |
+| API1:2023  | Broken Object Level Authorization               | **Auth suite** (Tier-2, requires ≥2 configured identities): cross-identity BOLA detection on object-level endpoints (`auth.bola_object_access`)                                                   |
+| API2:2023  | Broken Authentication                           | **Auth suite**: 401 semantics, auth bypass heuristic, definitive invalid-token-accepted detection, cross-origin redirect risk, JWT inspection (alg:none, weak/stub signatures, missing exp, expired issuance, excessive TTL); **CORS suite**: wildcard + credentials |
+| API3:2023  | Broken Object Property Level Authorization      | **Auth suite** (opt-in): mass assignment detection on writable object endpoints (`auth.mass_assignment_accepted`); **Inventory suite**: excessive data exposure on GET responses                 |
 | API4:2023  | Unrestricted Resource Consumption               | **Rate limit suite**: header inspection, sequential burst probe, missing Retry-After detection                                                                                                    |
-| API5:2023  | Broken Function Level Authorization             | Partial — auth suite detects unprotected endpoints (heuristic)                                                                                                                                    |
-| API6:2023  | Unrestricted Access to Sensitive Business Flows | —                                                                                                                                                                                                 |
-| API7:2023  | Server Side Request Forgery                     | —                                                                                                                                                                                                 |
+| API5:2023  | Broken Function Level Authorization             | Partial — auth suite detects unprotected endpoints (heuristic); no dedicated function-level authorization check                                                                                   |
+| API6:2023  | Unrestricted Access to Sensitive Business Flows | **Rate limit suite**: throttling check on declared sensitive flows (`ratelimit.sensitive_flow_unthrottled`, requires `businessFlow.sensitivePaths`)                                               |
+| API7:2023  | Server Side Request Forgery                     | **Inventory suite**: SSRF surface detection on URL-shaped parameters (`inventory.ssrf_surface`); opt-in active probing of write operations (`inventory.ssrfActiveProbe`)                          |
 | API8:2023  | Security Misconfiguration                       | **Headers suite**: HSTS, X-Content-Type-Options, Referrer-Policy; **CORS suite**: misconfiguration; **Injection suite**: error disclosure, template/command injection signal detection            |
-| API9:2023  | Improper Inventory Management                   | **Inventory suite**: sensitive endpoint exposure (/debug, /actuator, /swagger, etc.), stale version detection cross-referenced against OpenAPI spec                                               |
+| API9:2023  | Improper Inventory Management                   | **Inventory suite**: sensitive endpoint exposure (/debug, /actuator, /swagger, etc.), stale version detection cross-referenced against OpenAPI spec, GraphQL introspection detection              |
 | API10:2023 | Unsafe Consumption of APIs                      | —                                                                                                                                                                                                 |
 
 ---
@@ -146,10 +146,10 @@ sentinel scan [options]
 | `-u, --url`     | Base URL of the target API (or set `TARGET_URL` env var) |
 | `-c, --config`  | Path to config file (default: `sentinel.config.json`)    |
 | `--openapi`     | OpenAPI file path or URL for endpoint enumeration        |
-| `-o, --out`     | Output directory (default: `./sentinel-out`)             |
-| `-v, --verbose` | Enable verbose logging                                   |
+| `-o, --out`     | Output directory. Falls back to `output.dir` in the config file, then `./sentinel-out` |
+| `-v, --verbose` | Enable verbose logging. Falls back to `verbose` in the config file, then `false`        |
 
-CLI flags override config file values. The `--openapi` flag is equivalent to setting `target.openapi` in the config file.
+CLI flags override config file values; an omitted flag falls back to the config file, then the schema default. The `--openapi` flag is equivalent to setting `target.openapi` in the config file.
 
 ### Environment variables
 
@@ -158,6 +158,7 @@ CLI flags override config file values. The `--openapi` flag is equivalent to set
 | `TARGET_URL`     | Sets `target.baseUrl`. Equivalent to `-u`; the CLI flag takes precedence if both are provided.         |
 | `RESULTS_BUCKET` | S3 bucket name for pipeline mode. Both `RESULTS_BUCKET` and `RUN_ID` must be set to trigger an upload. |
 | `RUN_ID`         | Run identifier used as the S3 object key: `results/<RUN_ID>.json`.                                     |
+| `AUTH_TOKEN_URL` | Sets `auth.identities[0].tokenUrl` (creating a `primary` identity if none is configured). How the CI pipeline (Weir) supplies a target's token endpoint without a config file — see [Auth](#auth). |
 
 When `RESULTS_BUCKET` and `RUN_ID` are both present, Sentinel uploads the JSON report to S3 after the scan using the task's IAM role — no credentials required. Local file output is unaffected. If only one of the two is set, a warning is logged and the upload is skipped.
 
@@ -176,8 +177,9 @@ Example:
     "openapi": "./openapi.json"
   },
   "auth": {
-    "type": "bearer",
-    "bearerToken": "${API_TOKEN}",
+    "identities": [
+      { "name": "primary", "type": "bearer", "bearerToken": "${API_TOKEN}" }
+    ],
     "probePaths": ["/me"],
     "compareUnauthed": true
   },
@@ -218,23 +220,34 @@ Example:
 
 ### Auth
 
-| Option            | Description                                                                           |
-| ----------------- | ------------------------------------------------------------------------------------- |
-| `type`            | Auth scheme: `none`, `bearer`, `basic`, `apiKey` (default: `none`)                    |
-| `bearerToken`     | Token value for `bearer` auth                                                         |
-| `basicUser`       | Username for `basic` auth                                                             |
-| `basicPass`       | Password for `basic` auth                                                             |
-| `apiKeyHeader`    | Header name for `apiKey` auth (e.g. `x-api-key`)                                      |
-| `apiKeyValue`     | Header value for `apiKey` auth                                                        |
+`auth.identities` is an ordered array of named credentials. `identities[0]` is
+the primary/default session every suite uses; a second (or later) entry opts
+into multi-identity checks (Tier-2 — cross-identity BOLA detection). An empty
+or omitted `identities` array means unauthenticated (Tier-0).
+
+| Option (per identity) | Description                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------- |
+| `name`                 | Identity label, must be unique across the array                                       |
+| `type`                 | Auth scheme: `none`, `bearer`, `basic`, `apiKey` (default: `none`)                     |
+| `bearerToken`          | Token value for `bearer` auth                                                          |
+| `basicUser`            | Username for `basic` auth                                                              |
+| `basicPass`            | Password for `basic` auth                                                              |
+| `apiKeyHeader`         | Header name for `apiKey` auth (e.g. `x-api-key`)                                       |
+| `apiKeyValue`          | Header value for `apiKey` auth                                                         |
 | `tokenUrl`             | Endpoint to fetch a token from before scanning; the token is used as a bearer credential for all requests (Tier-1 dynamic auth). Overrides a statically-set `type`. |
 | `tokenMethod`          | HTTP method for the token fetch: `GET` or `POST` (default: `GET`)                      |
 | `tokenField`           | JSON field in the token response holding the token (default: `token`)                  |
 | `tokenRequestHeaders`  | Static headers sent on the token fetch (e.g. a `content-type`, or a client secret). Redacted in reports. |
 | `tokenRequestBody`     | Raw request body sent on the token fetch (for `POST` token endpoints). Redacted in reports. |
-| `probePaths`      | Endpoints used by the auth suite for probing (default: `["/"]`)                       |
-| `compareUnauthed` | Compare authed vs. unauthed responses to detect missing enforcement (default: `true`) |
 
-The `AUTH_TOKEN_URL` environment variable maps to `auth.tokenUrl` (this is how the CI pipeline — Weir — supplies a target's token endpoint without Sentinel needing a config file). A fetch failure (unreachable endpoint, non-2xx, or a missing/non-string token field) is fatal: the scan exits with code `3` rather than silently scanning unauthenticated.
+| Option (on `auth` itself) | Description                                                                        |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| `identities`                 | Array of named credentials, see above (default: `[]` — unauthenticated)               |
+| `probePaths`                 | Endpoints used by the auth suite for probing (default: `["/"]`)                       |
+| `compareUnauthed`            | Compare authed vs. unauthed responses to detect missing enforcement (default: `true`) |
+| `massAssignmentProbe`        | Opt-in: also probe writable object endpoints for mass assignment (default: `false`) — sends a real write, see [`auth.mass_assignment_accepted`](./FINDINGS.md) |
+
+The `AUTH_TOKEN_URL` environment variable maps to `auth.identities[0].tokenUrl`, creating a `primary` identity if none is configured (this is how the CI pipeline — Weir — supplies a target's token endpoint without Sentinel needing a config file). A fetch failure (unreachable endpoint, non-2xx, or a missing/non-string token field) is fatal: the scan exits with code `3` rather than silently scanning unauthenticated.
 
 Dynamic-token example (fetch a bearer token from a login endpoint, then scan):
 
@@ -242,17 +255,36 @@ Dynamic-token example (fetch a bearer token from a login endpoint, then scan):
 {
   "target": { "baseUrl": "https://api.example.com" },
   "auth": {
-    "tokenUrl": "https://api.example.com/auth/login",
-    "tokenMethod": "POST",
-    "tokenField": "access_token",
-    "tokenRequestHeaders": { "content-type": "application/json" },
-    "tokenRequestBody": "${TOKEN_BODY}",
+    "identities": [
+      {
+        "name": "primary",
+        "tokenUrl": "https://api.example.com/auth/login",
+        "tokenMethod": "POST",
+        "tokenField": "access_token",
+        "tokenRequestHeaders": { "content-type": "application/json" },
+        "tokenRequestBody": "${TOKEN_BODY}"
+      }
+    ],
     "probePaths": ["/me"]
   }
 }
 ```
 
 Note the whole-string `${VAR}` interpolation rule (above) applies to `tokenRequestBody` and `tokenRequestHeaders` values too: put the entire body in one env var (`TOKEN_BODY='{"user":"scanner","password":"..."}'`), not a partial placeholder like `"{\"password\":\"${SCAN_PASSWORD}\"}"` — that would be sent literally.
+
+Multi-identity (Tier-2) example — a second identity enables cross-identity BOLA
+detection (`auth.bola_object_access`) when an OpenAPI spec is loaded:
+
+```json
+{
+  "auth": {
+    "identities": [
+      { "name": "userA", "type": "bearer", "bearerToken": "${USER_A_TOKEN}" },
+      { "name": "userB", "type": "bearer", "bearerToken": "${USER_B_TOKEN}" }
+    ]
+  }
+}
+```
 
 ### Scope
 
@@ -272,6 +304,14 @@ When scope is disabled or no OpenAPI spec is provided, suites fall back to probi
 ### Suites
 
 The `suites` block enables or disables individual test suites. All suites are enabled by default except `injection`, which defaults to `false` and requires `--openapi` or `target.openapi` to run.
+
+### Inventory
+
+| Option           | Description                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `ssrfActiveProbe` | Opt-in: also probe `POST`/`PUT`/`PATCH` operations and JSON body parameters for SSRF surface (default: `false`) — these requests may create or mutate resources on the target, see [`inventory.ssrf_surface`](./FINDINGS.md) |
+
+By default the always-on inventory suite only probes `GET` query parameters for SSRF surface, since it must not send state-changing requests to the target.
 
 ### Injection
 
@@ -354,9 +394,9 @@ CLI
 | 0    | Scan completed, no high or critical findings                                        |
 | 1    | Scan ran but one or more suites failed; report is partial                           |
 | 2    | Scan completed, high or critical findings present                                   |
-| 3    | Fatal error — invalid config, bad arguments, S3 upload failure, or unexpected crash |
+| 3    | Fatal error — invalid config, bad arguments, or unexpected crash before/during the scan |
 
-Exit code precedence is `2 > 1 > 0`: high/critical findings take priority over partial-run signalling. Reporter failures are recorded in the report (`reporterErrors`) but do not change the exit code. S3 upload failure exits `3` immediately so a broken upload gates the pipeline.
+Exit code precedence is `2 > 1 > 0`: high/critical findings take priority over partial-run signalling. Reporter failures — including a failed S3 upload in pipeline mode — are recorded in the report (`reporterErrors`) but do not change the exit code; findings computed by a completed scan still gate the pipeline correctly even if the upload itself failed.
 
 ---
 
@@ -369,6 +409,6 @@ Sentinel is designed to be non-destructive by default:
 - No state-changing requests are sent unless explicitly enabled
 - Redirects are not followed
 
-**Scanner scope:** Sentinel performs passive black-box surface scanning (Tier-0). Authorization-logic vulnerabilities (BOLA, BFLA) require multi-identity authenticated testing and are out of scope for this mode. Authenticated scanning (Tier-1) and multi-identity testing (Tier-2) are on the roadmap as opt-in tiers.
+**Scanner scope:** Sentinel performs passive black-box surface scanning by default (Tier-0, no `auth.identities` configured). Configuring one identity opts into authenticated scanning (Tier-1 — definitive JWT/token enforcement probing, mass assignment); configuring two or more opts into multi-identity testing (Tier-2 — cross-identity BOLA detection, `auth.bola_object_access`). Function-level authorization (BFLA) has no dedicated check yet and remains out of scope regardless of tier.
 
 Sentinel is intended for authorized testing only.

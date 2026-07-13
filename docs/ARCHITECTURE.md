@@ -173,6 +173,27 @@ They do not execute scans or perform network requests.
 
 ---
 
+## Auth tiers (Tier-0/1/2)
+
+Sentinel scans in one of three tiers, determined entirely by how many entries
+are in `auth.identities` — there is no separate flag to opt into a tier.
+
+| Tier | Trigger                            | Adds                                                                                                                        |
+| ---- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | No `auth.identities` configured      | Passive black-box surface scanning — headers, CORS, inventory, JWT shape, injection surface                                  |
+| 1    | One identity configured              | Authenticated scanning — definitive JWT/token enforcement probing (`auth.invalid_token_accepted`), mass assignment (`auth.mass_assignment_accepted`, opt-in via `auth.massAssignmentProbe`) |
+| 2    | Two or more identities configured    | Multi-identity testing — cross-identity BOLA detection (`auth.bola_object_access`)                                            |
+
+Tiers are additive: Tier-2 still runs every Tier-0 and Tier-1 check. See
+[`FINDINGS.md`](../FINDINGS.md) for the full per-check registry, including
+which finding IDs require which tier. Function-level authorization (BFLA) has
+no dedicated check at any tier yet.
+
+This vocabulary is used consistently by downstream repos — Weir's
+`docs/ARCHITECTURE.md` documents which tier it runs Sentinel at.
+
+---
+
 ## Safety model
 
 Sentinel is designed to be safe-by-default:
