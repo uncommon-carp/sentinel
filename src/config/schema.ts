@@ -31,7 +31,13 @@ const AuthSchema = z
   .object({
     identities: z.array(NamedIdentitySchema).default([]),
     probePaths: z.array(z.string()).default(['/']),
-    compareUnauthed: z.boolean().default(true)
+    compareUnauthed: z.boolean().default(true),
+    // Opt-in: when true, the auth suite also probes PATCH/PUT object endpoints
+    // with a canary field absent from the operation's documented request-body
+    // schema, then re-reads the resource to check whether it persisted. Default
+    // false — same opt-in-because-mutating precedent as
+    // inventory.ssrfActiveProbe — since this sends a real write to the target.
+    massAssignmentProbe: z.boolean().default(false)
   })
   // Strict so the pre-array shape (flat `type`/`bearerToken`/`tokenUrl` on `auth`)
   // fails loudly with an unrecognized-keys error rather than silently dropping the
@@ -72,6 +78,22 @@ const InventorySchema = z
     // body parameters. Default false keeps the always-on suite safe — GET query
     // params only, no state-changing requests to the target.
     ssrfActiveProbe: z.boolean().default(false)
+  })
+  .default({});
+
+// Business flow config (OWASP API6 groundwork). Black-box path/name guessing
+// can't reliably tell a sensitive business flow (checkout, coupon redemption,
+// password reset) from an ordinary endpoint, so Sentinel doesn't try — the
+// user declares which endpoints are sensitive flows explicitly, the same
+// "the spec alone can't reveal this, so the user tells Sentinel" precedent
+// already established by auth.probePaths/auth.identities. Empty (default)
+// means no business-flow check runs at all.
+const BusinessFlowSchema = z
+  .object({
+    // Method+path pairs (e.g. "POST /api/v2/coupons/redeem") or operationIds,
+    // resolved against the loaded OpenAPI spec the same way auth.probePaths
+    // is resolved — plain strings, no extension to the spec itself required.
+    sensitivePaths: z.array(z.string()).default([])
   })
   .default({});
 
@@ -118,6 +140,7 @@ export const SentinelConfigSchema = z.object({
     .default({}),
   injection: InjectionConfigSchema,
   inventory: InventorySchema,
+  businessFlow: BusinessFlowSchema,
   scope: ScopeSchema.default({}),
   active: ActiveSchema,
   output: z

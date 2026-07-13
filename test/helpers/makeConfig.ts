@@ -24,7 +24,8 @@ export function makeConfig(
               }
             ],
       probePaths: ['/'],
-      compareUnauthed: authType !== 'none'
+      compareUnauthed: authType !== 'none',
+      massAssignmentProbe: false
     },
     suites: {
       headers: true,
@@ -36,6 +37,7 @@ export function makeConfig(
     },
     injection: { paramTypes: ['query', 'body'], categories: ['sql', 'template'] },
     inventory: { ssrfActiveProbe: false },
+    businessFlow: { sensitivePaths: [] },
     ratelimit: { burstCount: 10, delayMs: 0 },
     scope: {
       enabled: false,

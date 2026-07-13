@@ -326,4 +326,176 @@ describe('inventory suite', () => {
 
     expect(findings.every((f) => f.id !== 'inventory.ssrf_surface')).toBe(true);
   });
+
+  // ── Excessive data exposure (API3) ──────────────────────────────────────────
+
+  const responseSchema = (properties: Record<string, unknown>) => ({
+    responses: {
+      200: { content: { 'application/json': { schema: { type: 'object', properties } } } }
+    }
+  });
+
+  it('emits excessive_data_exposure when a sensitive field is present in a live response', async () => {
+    const queue = makeQueue();
+    queue.push({
+      status: 200,
+      bodyText: JSON.stringify({ name: 'Alice', apiKey: 'sk_live_abc' })
+    });
+    mockFetchQueue(queue);
+
+    const paths = {
+      '/profile': {
+        get: responseSchema({ name: { type: 'string' }, apiKey: { type: 'string' } })
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    const f = findings.find((x) => x.id === 'inventory.excessive_data_exposure');
+    expect(f).toBeDefined();
+    expect(f!.severity).toBe('medium');
+    expect(f!.suite).toBe('inventory');
+    expect(f!.tags).toContain('api3');
+    const endpoints = f!.evidence?.endpoints as Array<{ endpoint: string; fields: string[] }>;
+    expect(endpoints).toHaveLength(1);
+    expect(endpoints[0].endpoint).toBe('GET /api/v2/profile');
+    expect(endpoints[0].fields).toEqual(['apiKey']);
+    // Evidence names the field, not its value.
+    expect(JSON.stringify(f!.evidence)).not.toContain('sk_live_abc');
+  });
+
+  it('does not flag a schema-declared sensitive field that is absent from the live response', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ name: 'Alice' }) });
+    mockFetchQueue(queue);
+
+    const paths = {
+      '/profile': {
+        get: responseSchema({ name: { type: 'string' }, apiKey: { type: 'string' } })
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.excessive_data_exposure')).toBe(true);
+  });
+
+  it('does not flag a schema-declared sensitive field that is null in the live response', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ name: 'Alice', apiKey: null }) });
+    mockFetchQueue(queue);
+
+    const paths = {
+      '/profile': {
+        get: responseSchema({ name: { type: 'string' }, apiKey: { type: 'string' } })
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.excessive_data_exposure')).toBe(true);
+  });
+
+  it('flags a field declared via format: password even without a sensitive name', async () => {
+    const queue = makeQueue();
+    queue.push({ status: 200, bodyText: JSON.stringify({ credential: 'hunter2' }) });
+    mockFetchQueue(queue);
+
+    const paths = {
+      '/profile': { get: responseSchema({ credential: { type: 'string', format: 'password' } }) }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    const f = findings.find((x) => x.id === 'inventory.excessive_data_exposure');
+    expect(f).toBeDefined();
+    const endpoints = f!.evidence?.endpoints as Array<{ fields: string[] }>;
+    expect(endpoints[0].fields).toEqual(['credential']);
+  });
+
+  it('sweeps candidate ids for an integer path param and flags once a live read succeeds', async () => {
+    // First candidate id (1) 404s; second (2) succeeds and carries the field.
+    const queue = makeQueue();
+    queue.push({ status: 404 });
+    queue.push({ status: 200, bodyText: JSON.stringify({ id: 2, apiKey: 'sk_live_bob' }) });
+    mockFetchQueue(queue);
+
+    const paths = {
+      '/users/{id}': {
+        get: {
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          ...responseSchema({ id: { type: 'integer' }, apiKey: { type: 'string' } })
+        }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    const f = findings.find((x) => x.id === 'inventory.excessive_data_exposure');
+    expect(f).toBeDefined();
+    const endpoints = f!.evidence?.endpoints as Array<{ endpoint: string; fields: string[] }>;
+    expect(endpoints[0].endpoint).toBe('GET /api/v2/users/{id}');
+    expect(endpoints[0].fields).toEqual(['apiKey']);
+  });
+
+  it('does not probe a path with a non-integer path param', async () => {
+    // Only the 10 base requests are queued; probing would throw "no more mocked responses".
+    mockFetchQueue(makeQueue());
+
+    const paths = {
+      '/users/{slug}': {
+        get: {
+          parameters: [{ name: 'slug', in: 'path', required: true, schema: { type: 'string' } }],
+          ...responseSchema({ apiKey: { type: 'string' } })
+        }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.excessive_data_exposure')).toBe(true);
+  });
+
+  it('does not probe a path with more than one path param', async () => {
+    // Only the 10 base requests are queued; probing would throw "no more mocked responses".
+    mockFetchQueue(makeQueue());
+
+    const paths = {
+      '/orgs/{orgId}/users/{id}': {
+        get: {
+          parameters: [
+            { name: 'orgId', in: 'path', required: true, schema: { type: 'integer' } },
+            { name: 'id', in: 'path', required: true, schema: { type: 'integer' } }
+          ],
+          ...responseSchema({ apiKey: { type: 'string' } })
+        }
+      }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.excessive_data_exposure')).toBe(true);
+  });
+
+  it('issues no probe and emits no finding when no response field looks sensitive', async () => {
+    // Only the 10 base requests are queued; a stray probe would throw "no more mocked responses".
+    mockFetchQueue(makeQueue());
+
+    const paths = {
+      '/profile': { get: responseSchema({ name: { type: 'string' }, bio: { type: 'string' } }) }
+    };
+    const api = makeApiSpec('https://api.example.com/api/v2', paths);
+    const findings = await inventorySuite().run({ ...makeSuiteCtx(), api });
+
+    expect(findings.every((f) => f.id !== 'inventory.excessive_data_exposure')).toBe(true);
+  });
+
+  it('does not probe for excessive data exposure without a loaded spec', async () => {
+    // Only the 10 base requests are queued; a stray probe would throw "no more mocked responses".
+    mockFetchQueue(makeQueue());
+
+    const findings = await inventorySuite().run(makeSuiteCtx());
+
+    expect(findings.every((f) => f.id !== 'inventory.excessive_data_exposure')).toBe(true);
+  });
 });

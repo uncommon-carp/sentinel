@@ -284,6 +284,24 @@ Requires an OpenAPI spec. When enabled, probes parameters extracted from the spe
 
 > **Note:** `command` injection probing must be explicitly added to `categories` — it is not enabled by default. All injection checks are output-based only; no time-based payloads are used.
 
+### Business Flow (API6 groundwork)
+
+Black-box path/name guessing can't reliably tell a sensitive business flow (checkout, coupon redemption, password reset) from an ordinary endpoint, so Sentinel doesn't try to guess — you declare which endpoints are sensitive flows explicitly, the same way `auth.probePaths` and `auth.identities` already ask you to tell Sentinel something the spec alone can't reveal.
+
+| Option           | Description                                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------------------- |
+| `sensitivePaths` | Method+path pairs (e.g. `"POST /api/v2/coupons/redeem"`) or operationIds naming sensitive business-flow endpoints (default: `[]`) |
+
+Empty or unset (the default) means no business-flow check runs at all.
+
+```json
+{
+  "businessFlow": {
+    "sensitivePaths": ["POST /api/v2/coupons/redeem"]
+  }
+}
+```
+
 ### Rate Limiting
 
 | Option       | Description                                                      |
