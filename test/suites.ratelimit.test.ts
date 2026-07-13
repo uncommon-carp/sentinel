@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { rateLimitSuite } from '../src/suites/ratelimit.js';
 import { mockFetchQueue } from './helpers/fetchMock.js';
 import { makeSuiteCtx } from './helpers/makeConfig.js';
+import type { LoadedApiSpec } from '../src/openapi/types.js';
 
 function makeCtx(overrides?: { burstCount?: number }) {
   const ctx = makeSuiteCtx();
@@ -117,5 +118,131 @@ describe('ratelimit suite — Phase 2: burst probe', () => {
 
     // Should not throw (would throw if the 3rd burst request were attempted).
     await expect(rateLimitSuite().run(makeCtx())).resolves.not.toThrow();
+  });
+});
+
+describe('ratelimit suite — Phase 3: sensitive business-flow burst probe', () => {
+  function makeFlowCtx(
+    sensitivePaths: string[],
+    overrides?: { burstCount?: number; api?: LoadedApiSpec }
+  ) {
+    const ctx = makeCtx({ burstCount: overrides?.burstCount ?? 2 });
+    ctx.config.businessFlow.sensitivePaths = sensitivePaths;
+    if (overrides?.api) ctx.api = overrides.api;
+    return ctx;
+  }
+
+  it('emits sensitive_flow_unthrottled when a declared flow completes burst with no 429/headers', async () => {
+    // Phase 1: 1 probe. Phase 2: 2 burst. Phase 3: 2 burst for the declared flow. All ok().
+    mockFetchQueue([ok(), ok(), ok(), ok(), ok()]);
+
+    const findings = await rateLimitSuite().run(makeFlowCtx(['POST /api/v2/coupons/redeem']));
+
+    const finding = findings.find((f) => f.id === 'ratelimit.sensitive_flow_unthrottled');
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe('high');
+    expect(finding?.suite).toBe('ratelimit');
+    expect(finding?.owasp).toContain('API6');
+    const flows = finding?.evidence?.flows as Array<{ endpoint: string; statuses: number[] }>;
+    expect(flows).toHaveLength(1);
+    expect(flows[0]).toMatchObject({
+      endpoint: 'POST /api/v2/coupons/redeem',
+      statuses: [200, 200]
+    });
+  });
+
+  it('does not emit sensitive_flow_unthrottled when the declared flow is throttled', async () => {
+    // Phase 1: 1. Phase 2: 2 burst (ok). Phase 3: throttled on the 1st request, stops early.
+    mockFetchQueue([ok(), ok(), ok(), tooMany(retryAfter)]);
+
+    const findings = await rateLimitSuite().run(makeFlowCtx(['POST /api/v2/coupons/redeem']));
+
+    expect(findings.some((f) => f.id === 'ratelimit.sensitive_flow_unthrottled')).toBe(false);
+  });
+
+  it('emits missing_retry_after when a sensitive flow is throttled without Retry-After', async () => {
+    mockFetchQueue([ok(), ok(), ok(), tooMany()]);
+
+    const findings = await rateLimitSuite().run(makeFlowCtx(['POST /api/v2/coupons/redeem']));
+
+    const finding = findings.find((f) => f.id === 'ratelimit.missing_retry_after');
+    expect(finding).toBeDefined();
+    expect(finding?.tags).toContain('business-flow');
+  });
+
+  it('does not run the sensitive-flow probe when businessFlow.sensitivePaths is empty (default)', async () => {
+    // Phase 1: 1. Phase 2: 2 burst. No phase 3 requests — a stray one would exhaust the queue.
+    const fetchMock = mockFetchQueue([ok(), ok(), ok()]);
+
+    const findings = await rateLimitSuite().run(makeCtx({ burstCount: 2 }));
+
+    expect(findings.some((f) => f.id === 'ratelimit.sensitive_flow_unthrottled')).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('probes an explicit "METHOD /path" declaration with the declared method', async () => {
+    const fetchMock = mockFetchQueue([ok(), ok(), ok()]);
+
+    await rateLimitSuite().run(makeFlowCtx(['PUT /api/v2/settings'], { burstCount: 1 }));
+
+    const lastCall = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    const init = lastCall?.[1] as RequestInit;
+    expect(init.method).toBe('PUT');
+    expect(lastCall?.[0] as string).toContain('/api/v2/settings');
+  });
+
+  it('defaults a bare path declaration to GET', async () => {
+    const fetchMock = mockFetchQueue([ok(), ok(), ok()]);
+
+    await rateLimitSuite().run(makeFlowCtx(['/api/v2/coupons/redeem'], { burstCount: 1 }));
+
+    const lastCall = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    const init = lastCall?.[1] as RequestInit;
+    expect(init.method).toBe('GET');
+  });
+
+  it('resolves an operationId against the loaded OpenAPI spec', async () => {
+    const fetchMock = mockFetchQueue([ok(), ok(), ok()]);
+    const api: LoadedApiSpec = {
+      source: 'test',
+      spec: {
+        paths: {
+          '/api/v2/coupons/redeem': {
+            post: { operationId: 'redeemCoupon', responses: { 200: {} } }
+          }
+        }
+      },
+      endpoints: []
+    };
+
+    await rateLimitSuite().run(makeFlowCtx(['redeemCoupon'], { burstCount: 1, api }));
+
+    const lastCall = fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+    const init = lastCall?.[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    expect(lastCall?.[0] as string).toContain('/api/v2/coupons/redeem');
+  });
+
+  it('skips a sensitive path entry that cannot be resolved (unknown operationId, no spec)', async () => {
+    // Phase 1: 1. Phase 2: 1 burst. No phase 3 requests since resolution fails.
+    const fetchMock = mockFetchQueue([ok(), ok()]);
+
+    await rateLimitSuite().run(makeFlowCtx(['nonexistentOperation'], { burstCount: 1 }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('aggregates multiple unthrottled flows into one finding', async () => {
+    // Phase 1: 1. Phase 2: 1 burst. Phase 3: 2 flows x 1 burst each.
+    mockFetchQueue([ok(), ok(), ok(), ok()]);
+
+    const findings = await rateLimitSuite().run(
+      makeFlowCtx(['POST /api/v2/coupons/redeem', 'POST /api/v2/checkout'], { burstCount: 1 })
+    );
+
+    const finding = findings.find((f) => f.id === 'ratelimit.sensitive_flow_unthrottled');
+    expect(finding).toBeDefined();
+    const flows = finding?.evidence?.flows as Array<{ endpoint: string }>;
+    expect(flows).toHaveLength(2);
   });
 });

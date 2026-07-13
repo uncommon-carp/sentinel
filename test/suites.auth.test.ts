@@ -441,3 +441,195 @@ describe('auth suite — BOLA probe', () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
+
+describe('auth suite — mass assignment probe', () => {
+  const baseUrl = 'https://api.example.com';
+
+  // A spec advertising one writable object endpoint (integer id, PATCH) under
+  // /api/v2, documenting only `email` as settable — so the probe's canary
+  // field (first undeclared candidate: `role`) is guaranteed absent.
+  const massAssignmentSpec: LoadedApiSpec = {
+    source: 'test',
+    spec: {
+      servers: [{ url: `${baseUrl}/api/v2` }],
+      paths: {
+        '/users/{id}': {
+          patch: {
+            parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { type: 'object', properties: { email: { type: 'string' } } }
+                }
+              }
+            },
+            responses: { 200: {} }
+          }
+        }
+      }
+    },
+    endpoints: [{ method: 'patch', path: '/users/{id}' }]
+  };
+
+  // probePaths [] and compareUnauthed false so the only requests the suite
+  // makes are the mass assignment probe's, keeping the order-based fetch mock
+  // queue easy to reason about.
+  function massAssignmentCtx(opts: {
+    identityNames?: string[];
+    cap?: number;
+    api?: LoadedApiSpec | undefined;
+    massAssignmentProbe?: boolean;
+  }): SuiteContext {
+    const logger = createLogger({ verbose: false });
+    const names = opts.identityNames ?? ['alice'];
+    const mkHttp = (name: string) =>
+      new HttpClient(
+        {
+          baseUrl,
+          timeoutMs: 8000,
+          authHeader: () => ({ authorization: `Bearer ${name}-token` }),
+          authType: 'bearer'
+        },
+        logger
+      );
+    const identities = names.map((name) => ({ name, http: mkHttp(name) }));
+    const config = makeConfig(baseUrl, 'bearer', {
+      auth: {
+        identities: names.map((name) => ({
+          name,
+          type: 'bearer' as const,
+          bearerToken: `${name}-token`,
+          tokenMethod: 'GET' as const,
+          tokenField: 'token'
+        })),
+        probePaths: [],
+        compareUnauthed: false,
+        massAssignmentProbe: opts.massAssignmentProbe ?? true
+      },
+      active: { maxRequestsPerSuite: opts.cap ?? 40, timeoutMs: 8000 }
+    });
+    return {
+      http: identities[0]!.http,
+      config,
+      logger,
+      identities,
+      ...('api' in opts ? { api: opts.api } : { api: massAssignmentSpec })
+    };
+  }
+
+  it('flags mass assignment when the canary field persists after a write', async () => {
+    // Order: write (PATCH), read-back (GET).
+    mockFetchQueue([
+      {
+        status: 200,
+        bodyText: '{"id":1,"email":"alice@example.com","role":"sentinel-canary-9f2b1e"}'
+      },
+      {
+        status: 200,
+        bodyText: '{"id":1,"email":"alice@example.com","role":"sentinel-canary-9f2b1e"}'
+      }
+    ]);
+
+    const findings = await authSuite().run(massAssignmentCtx({ cap: 2 }));
+
+    const finding = findings.find((f) => f.id === 'auth.mass_assignment_accepted');
+    expect(finding).toBeDefined();
+    expect(finding?.severity).toBe('high');
+    expect(finding?.owasp).toContain('API3');
+    const accepted = (finding?.evidence as { accepted: Array<Record<string, unknown>> }).accepted;
+    expect(accepted[0]).toMatchObject({
+      endpoint: 'PATCH /api/v2/users/1',
+      identity: 'alice',
+      resourceId: 1,
+      field: 'role',
+      value: 'sentinel-canary-9f2b1e'
+    });
+  });
+
+  it('does not flag when the write is rejected', async () => {
+    mockFetchQueue([{ status: 403, bodyText: 'forbidden' }]);
+
+    const findings = await authSuite().run(massAssignmentCtx({ cap: 1 }));
+
+    expect(findings.find((f) => f.id === 'auth.mass_assignment_accepted')).toBeUndefined();
+  });
+
+  it('does not flag when the write succeeds but the canary field is stripped server-side', async () => {
+    // Secure fixture: write accepted (200) but the read-back shows no `role`.
+    mockFetchQueue([
+      { status: 200, bodyText: '{"id":1,"email":"alice@example.com"}' },
+      { status: 200, bodyText: '{"id":1,"email":"alice@example.com"}' }
+    ]);
+
+    const findings = await authSuite().run(massAssignmentCtx({ cap: 2 }));
+
+    expect(findings.find((f) => f.id === 'auth.mass_assignment_accepted')).toBeUndefined();
+  });
+
+  it('does not probe when auth.massAssignmentProbe is off (default)', async () => {
+    // Only base requests (none, since probePaths is []) are queued; a stray
+    // probe would throw "no more mocked responses".
+    mockFetchQueue([]);
+
+    const findings = await authSuite().run(
+      massAssignmentCtx({ cap: 2, massAssignmentProbe: false })
+    );
+
+    expect(findings.find((f) => f.id === 'auth.mass_assignment_accepted')).toBeUndefined();
+  });
+
+  it('does not probe when no OpenAPI spec is available', async () => {
+    mockFetchQueue([]);
+
+    const findings = await authSuite().run(massAssignmentCtx({ cap: 2, api: undefined }));
+
+    expect(findings.find((f) => f.id === 'auth.mass_assignment_accepted')).toBeUndefined();
+  });
+
+  it('works with a single configured identity (no Tier-2 required)', async () => {
+    mockFetchQueue([
+      { status: 200, bodyText: '{"id":1,"role":"sentinel-canary-9f2b1e"}' },
+      { status: 200, bodyText: '{"id":1,"role":"sentinel-canary-9f2b1e"}' }
+    ]);
+
+    const findings = await authSuite().run(massAssignmentCtx({ identityNames: ['alice'], cap: 2 }));
+
+    expect(findings.find((f) => f.id === 'auth.mass_assignment_accepted')).toBeDefined();
+  });
+
+  it("never mutates another identity's object — probes each identity only against its own session", async () => {
+    // Two identities, cap only affords one id attempt each (2 requests per
+    // identity: write + read). alice's write persists; bob's is rejected.
+    // Confirms each identity's session issues its own requests independently.
+    mockFetchQueue([
+      { status: 200, bodyText: '{"id":1,"role":"sentinel-canary-9f2b1e"}' }, // alice write
+      { status: 200, bodyText: '{"id":1,"role":"sentinel-canary-9f2b1e"}' }, // alice read
+      { status: 403, bodyText: 'forbidden' } // bob write (id 1 isn't bob's)
+    ]);
+
+    const findings = await authSuite().run(
+      massAssignmentCtx({ identityNames: ['alice', 'bob'], cap: 3 })
+    );
+
+    const finding = findings.find((f) => f.id === 'auth.mass_assignment_accepted');
+    expect(finding).toBeDefined();
+    const accepted = (finding?.evidence as { accepted: Array<Record<string, unknown>> }).accepted;
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]).toMatchObject({ identity: 'alice' });
+  });
+
+  it('charges the real per-unit request cost against the cap (never exceeds maxRequestsPerSuite)', async () => {
+    // cap 2: alice's unit costs exactly 2 (write + read, both succeed and
+    // confirm). No budget remains for bob's identity — if the budget weren't
+    // checked before starting a new identity, a third request would fire and
+    // exhaust the mocked queue, throwing.
+    const fetchMock = mockFetchQueue([
+      { status: 200, bodyText: '{"id":1,"role":"sentinel-canary-9f2b1e"}' },
+      { status: 200, bodyText: '{"id":1,"role":"sentinel-canary-9f2b1e"}' }
+    ]);
+
+    await authSuite().run(massAssignmentCtx({ identityNames: ['alice', 'bob'], cap: 2 }));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});

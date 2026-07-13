@@ -13,6 +13,7 @@ export type DebugEvent =
   | 'auth.probe'
   | 'auth.jwt.inspected'
   | 'auth.bola.probe'
+  | 'auth.mass_assignment.probe'
   | 'auth.token.fetch'
   | 'auth.token.resolved'
   | 'ratelimit.probe'
@@ -24,6 +25,7 @@ export type DebugEvent =
   | 'injection.payload.sent'
   | 'inventory.probe'
   | 'inventory.ssrf.probe'
+  | 'inventory.data_exposure.probe'
   | 'auth.identity.resolved'
   | 'headers.check'
   | 'sentinel.s3.upload.start';

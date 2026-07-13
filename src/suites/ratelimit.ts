@@ -5,16 +5,20 @@
  * - Header scan: probes selected endpoints for X-RateLimit-* / RateLimit-* headers
  * - Burst probe: sequential requests to the first selected endpoint; flags missing 429 or headers
  * - Retry-After: flags 429 responses that omit Retry-After
+ * - Sensitive business-flow burst probe (opt-in): when businessFlow.sensitivePaths is
+ *   non-empty, retargets the same burst probe at each declared endpoint instead of the
+ *   first selected one, emitting a higher-severity finding on an unthrottled result (API6)
  *
  * Burst is sequential with delay (default 75ms) — no concurrent hammering.
  * Burst size is capped at min(ratelimit.burstCount, active.maxRequestsPerSuite).
  *
  * Configuration:
- * - ratelimit.burstCount  number of burst requests (default 10)
- * - ratelimit.delayMs     ms between burst requests (default 75)
+ * - ratelimit.burstCount        number of burst requests (default 10)
+ * - ratelimit.delayMs           ms between burst requests (default 75)
+ * - businessFlow.sensitivePaths method+path pairs or operationIds to run the sensitive-flow probe against
  */
 
-import type { Suite, Finding } from '../core/types.js';
+import type { Suite, Finding, SuiteContext } from '../core/types.js';
 import { resolveEndpoints } from '../core/endpoints.js';
 
 const RATE_LIMIT_HEADERS = new Set([
@@ -32,6 +36,86 @@ const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve,
 
 function hasRateLimitHeaders(headers: Record<string, string>): boolean {
   return [...RATE_LIMIT_HEADERS].some((h) => h in headers);
+}
+
+type BurstResponse = { status: number; headers: Record<string, string>; url: string };
+
+// Sequential burst of `burstCount` requests to a single method+path, `delayMs`
+// apart, stopping early on the first 429. Shared by phase 2 (the default
+// probe endpoint) and phase 3 (each declared sensitive business-flow endpoint)
+// — same mechanism, different target.
+async function runBurst(
+  ctx: SuiteContext,
+  method: string,
+  path: string,
+  burstCount: number,
+  delayMs: number
+): Promise<BurstResponse[]> {
+  const { logger } = ctx;
+  logger.debug('Starting burst probe', {
+    event: 'ratelimit.burst.start',
+    probePath: path,
+    method,
+    burstCount,
+    delayMs
+  });
+
+  const burst: BurstResponse[] = [];
+  for (let i = 0; i < burstCount; i++) {
+    if (i > 0) await sleep(delayMs);
+    const res = await ctx.http.request({ method, path });
+    burst.push({ status: res.status, headers: res.headers, url: res.url });
+    logger.debug('Burst request completed', {
+      event: 'ratelimit.burst.request',
+      index: i + 1,
+      of: burstCount,
+      status: res.status
+    });
+    if (res.status === 429) {
+      logger.debug('Burst probe throttled', {
+        event: 'ratelimit.burst.throttled',
+        requestsBeforeThrottle: i + 1
+      });
+      break;
+    }
+  }
+  return burst;
+}
+
+// Sensitive business-flow path resolution (OWASP API6 groundwork, story 5.10).
+// Each declared entry is one of:
+// - "METHOD /path"  (explicit method + path, e.g. "POST /api/v2/coupons/redeem")
+// - "/path"         (bare path, defaults to GET — same convention as auth.probePaths)
+// - an operationId  (resolved against the loaded OpenAPI spec, if any)
+const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'head']);
+
+function resolveSensitivePath(
+  raw: string,
+  spec: Record<string, unknown> | undefined
+): { method: string; path: string } | null {
+  const trimmed = raw.trim();
+
+  const explicit = trimmed.match(/^([A-Za-z]+)\s+(\/\S*)$/);
+  if (explicit) {
+    const method = explicit[1]!.toLowerCase();
+    if (HTTP_METHODS.has(method)) return { method, path: explicit[2]! };
+  }
+
+  if (trimmed.startsWith('/')) return { method: 'get', path: trimmed };
+
+  const paths = spec?.paths as Record<string, unknown> | undefined;
+  if (paths && typeof paths === 'object') {
+    for (const [path, pathItemRaw] of Object.entries(paths)) {
+      const pathItem = pathItemRaw as Record<string, unknown> | undefined;
+      if (!pathItem) continue;
+      for (const [method, operationRaw] of Object.entries(pathItem)) {
+        if (!HTTP_METHODS.has(method)) continue;
+        const operation = operationRaw as Record<string, unknown> | undefined;
+        if (operation?.['operationId'] === trimmed) return { method, path };
+      }
+    }
+  }
+  return null;
 }
 
 export function rateLimitSuite(): Suite {
@@ -87,34 +171,7 @@ export function rateLimitSuite(): Suite {
       const burstCount = Math.min(ctx.config.ratelimit.burstCount, cap);
       const delayMs = ctx.config.ratelimit.delayMs;
 
-      logger.debug('Starting burst probe', {
-        event: 'ratelimit.burst.start',
-        probePath,
-        burstCount,
-        delayMs
-      });
-
-      type BurstResponse = { status: number; headers: Record<string, string>; url: string };
-      const burst: BurstResponse[] = [];
-
-      for (let i = 0; i < burstCount; i++) {
-        if (i > 0) await sleep(delayMs);
-        const res = await ctx.http.request({ method: 'GET', path: probePath });
-        burst.push({ status: res.status, headers: res.headers, url: res.url });
-        logger.debug('Burst request completed', {
-          event: 'ratelimit.burst.request',
-          index: i + 1,
-          of: burstCount,
-          status: res.status
-        });
-        if (res.status === 429) {
-          logger.debug('Burst probe throttled', {
-            event: 'ratelimit.burst.throttled',
-            requestsBeforeThrottle: i + 1
-          });
-          break;
-        }
-      }
+      const burst = await runBurst(ctx, 'GET', probePath, burstCount, delayMs);
 
       const throttled = burst.find((r) => r.status === 429);
       const burstHasHeaders = burst.some((r) => hasRateLimitHeaders(r.headers));
@@ -172,6 +229,89 @@ export function rateLimitSuite(): Suite {
           },
           suite: 'ratelimit',
           tags: ['ratelimit']
+        });
+      }
+
+      // Phase 3: sensitive business-flow burst probe (OWASP API6), opt-in via
+      // businessFlow.sensitivePaths (story 5.10) — only runs when the user has
+      // declared at least one sensitive-flow endpoint (checkout, coupon
+      // redemption, password reset, ...). Same burst-probe mechanism as phase
+      // 2, retargeted at each declared path instead of toProbe[0]. An
+      // unthrottled *declared-sensitive* endpoint is a stronger signal than a
+      // generically unthrottled one, so it gets its own higher-severity
+      // finding ID rather than reusing ratelimit.no_429_on_burst.
+      const sensitiveFlows = ctx.config.businessFlow.sensitivePaths
+        .map((raw) => resolveSensitivePath(raw, ctx.api?.spec))
+        .filter((r): r is { method: string; path: string } => r !== null)
+        .slice(0, cap);
+
+      const unthrottledFlows: Array<{ endpoint: string; statuses: number[] }> = [];
+
+      for (const flow of sensitiveFlows) {
+        const method = flow.method.toUpperCase();
+        const flowBurst = await runBurst(ctx, method, flow.path, burstCount, delayMs);
+
+        const flowThrottled = flowBurst.find((r) => r.status === 429);
+        const flowHasHeaders = flowBurst.some((r) => hasRateLimitHeaders(r.headers));
+
+        if (flowThrottled) {
+          if (!flowThrottled.headers['retry-after']) {
+            findings.push({
+              id: 'ratelimit.missing_retry_after',
+              title: '429 response missing Retry-After header',
+              severity: 'low',
+              description:
+                'Rate limiting was triggered (HTTP 429) on a declared sensitive business-flow ' +
+                'endpoint, but the response did not include a Retry-After header. Without it, ' +
+                'clients have no signal for when to safely retry and may resort to aggressive polling.',
+              whyItMatters:
+                'Clients with no retry guidance typically resort to aggressive polling, worsening load on an already-throttled endpoint and turning a protective mechanism into an amplifier.',
+              remediation:
+                'Include a Retry-After header on 429 responses. The value should be the number ' +
+                'of seconds to wait, or an HTTP-date indicating when the client may retry.',
+              owasp: 'API4: Unrestricted Resource Consumption',
+              evidence: {
+                probeUrl: flowThrottled.url,
+                requestsBeforeThrottle: flowBurst.length,
+                burstCount,
+                delayMs
+              },
+              suite: 'ratelimit',
+              tags: ['ratelimit', 'http', 'business-flow']
+            });
+          }
+        } else if (!flowHasHeaders) {
+          unthrottledFlows.push({
+            endpoint: `${method} ${flow.path}`,
+            statuses: flowBurst.map((r) => r.status)
+          });
+        }
+      }
+
+      if (unthrottledFlows.length > 0) {
+        findings.push({
+          id: 'ratelimit.sensitive_flow_unthrottled',
+          title: 'Declared sensitive business flow endpoint is not rate limited',
+          severity: 'high',
+          description:
+            `${unthrottledFlows.length} endpoint(s) declared as sensitive business flows ` +
+            `(businessFlow.sensitivePaths) completed a burst of ${burstCount} sequential ` +
+            `requests (${delayMs}ms apart) without triggering a 429 or returning rate-limit ` +
+            'headers. Unlike a generically unthrottled endpoint, this one was explicitly ' +
+            'named as a sensitive flow — checkout, coupon redemption, password reset, or ' +
+            'similar — where unrestricted automation has direct business or fraud impact.',
+          whyItMatters:
+            'Sensitive business flows are prime targets for scripted abuse — coupon farming, ' +
+            'credential stuffing on login/reset, automated checkout fraud — where the damage is ' +
+            'measured in real financial or account-takeover impact, not just infrastructure load.',
+          remediation:
+            'Apply stricter rate limiting or CAPTCHA/step-up verification specifically to ' +
+            'business-critical flows, in addition to general API rate limiting. Return 429 ' +
+            'with standard rate-limit headers when limits are exceeded.',
+          owasp: 'API6: Unrestricted Access to Sensitive Business Flows',
+          evidence: { flows: unthrottledFlows, burstCount, delayMs },
+          suite: 'ratelimit',
+          tags: ['ratelimit', 'business-flow', 'api6']
         });
       }
 

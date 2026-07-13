@@ -8,12 +8,13 @@ Severities: `critical` › `high` › `medium` › `low` › `info`
 
 ## auth
 
-Checks HTTP auth semantics and basic auth enforcement behavior. Probes configurable `auth.probePaths` (default `["/"]`). With two or more configured identities (`auth.identities`, Tier-2) it also runs a cross-identity BOLA probe against object-level endpoints discovered from the OpenAPI spec.
+Checks HTTP auth semantics and basic auth enforcement behavior. Probes configurable `auth.probePaths` (default `["/"]`). With two or more configured identities (`auth.identities`, Tier-2) it also runs a cross-identity BOLA probe against object-level endpoints discovered from the OpenAPI spec. Setting `auth.massAssignmentProbe: true` opts into an active mass assignment probe against writable object endpoints.
 
 | ID                                  | Severity | Title                                                   | OWASP                       |
 | ----------------------------------- | -------- | ------------------------------------------------------- | --------------------------- |
 | `auth.jwt_alg_none`                 | critical | JWT with alg:none detected in response                  | API2: Broken Authentication |
 | `auth.bola_object_access`           | high     | Object-level endpoint served the same resource to multiple identities | API1: Broken Object Level Authorization |
+| `auth.mass_assignment_accepted`     | high     | Endpoint persisted a field absent from its documented request body | API3: Broken Object Property Level Authorization |
 | `auth.invalid_token_accepted`       | high     | Protected endpoint accepted an invalid token            | API2: Broken Authentication |
 | `auth.jwt_weak_signature`           | high     | JWT with a weak or stub signature detected in response  | API2: Broken Authentication |
 | `auth.jwt_expired_accepted`         | high     | Server issued an already-expired JWT                    | API2: Broken Authentication |
@@ -36,6 +37,13 @@ An object-level endpoint (a GET path keyed by a single enumerable resource id, e
 **Remediation:** Enforce object-level authorization on every request — verify the authenticated identity may access the specific object before returning it, not just that the caller is authenticated. Use non-enumerable identifiers as defense-in-depth.
 
 **Requires** at least two configured identities (`auth.identities`, Tier-2) so the probe can compare cross-identity access, and an OpenAPI spec advertising the object endpoint. v1 covers integer/number path ids only; opaque/UUID ids are not yet synthesized. Evidence omits the response bodies on purpose — the leaked records carry the sensitive fields (emails, API keys) the finding is about.
+
+#### `auth.mass_assignment_accepted` — high
+
+A writable object endpoint (a PATCH/PUT path keyed by a single enumerable resource id, discovered from the OpenAPI spec the same way `auth.bola_object_access` discovers GET endpoints) accepted a write carrying a synthetic canary field absent from the operation's documented request-body schema, and a follow-up read confirmed the field persisted. The endpoint binds the entire request body to the stored object instead of an explicit allow-list of documented fields, so a caller can set fields the API never intended to expose — roles, ownership, internal flags (mass assignment — OWASP API3). Each configured identity is only ever probed against resources reachable through its own session, never another identity's object.  
+**Remediation:** Bind requests to an explicit allow-list of fields per operation (a DTO or update schema), never the raw request body to the storage model. Reject or ignore undocumented fields instead of silently persisting them.
+
+**Opt-in** via `auth.massAssignmentProbe` (default `false`) — this probe sends a real write to the target, so it is off by default like `inventory.ssrfActiveProbe`. Works with a single configured identity; with two or more (Tier-2), each is probed independently. v1 covers integer/number path ids only. Evidence names the injected field/value pair — safe to include since it's Sentinel's own synthetic canary, not real user data.
 
 #### `auth.invalid_token_accepted` — high
 
@@ -170,13 +178,14 @@ A template expression payload (`{{7*7}}`, `${7*7}`, `<%= 7*7 %>`) produced outpu
 
 ## inventory
 
-Probes common API paths for sensitive endpoint exposure, GraphQL introspection, and stale version endpoints. Primarily OWASP API9; the SSRF surface check maps to API7. Multiple paths triggering the same class of issue are collapsed into one finding.
+Probes common API paths for sensitive endpoint exposure, GraphQL introspection, and stale version endpoints. Primarily OWASP API9; the SSRF surface check maps to API7 and the excessive data exposure check maps to API3. Multiple paths triggering the same class of issue are collapsed into one finding.
 
 | ID                                        | Severity | Title                                             | OWASP                               |
 | ----------------------------------------- | -------- | ------------------------------------------------- | ----------------------------------- |
 | `inventory.sensitive_endpoint_exposed`    | medium   | Sensitive endpoint(s) responding with 2xx         | API9: Improper Inventory Management |
 | `inventory.stale_version_responding`      | medium   | Deprecated API version endpoint is responding     | API9: Improper Inventory Management |
 | `inventory.ssrf_surface`                  | medium   | Parameter(s) accept an external URL without validation | API7: Server Side Request Forgery |
+| `inventory.excessive_data_exposure`       | medium   | Response includes sensitive fields beyond what the client needs | API3: Broken Object Property Level Authorization |
 | `inventory.graphql_introspection_enabled` | low      | GraphQL introspection is enabled                  | API9: Improper Inventory Management |
 
 ### Finding details
@@ -196,6 +205,11 @@ The API spec declares a current version (e.g. `v2`) but an older version prefix 
 One or more parameters that accept a URL (by name — e.g. `url`, `uri`, `callback`, `webhook`, `redirect` — or OpenAPI `format: uri`; includes path-level parameters) took a benign external probe URL (`http://ssrf-probe.sentinel.invalid/`) without returning a validation or rejection signal. Requires a loaded OpenAPI spec. By default only `GET` query parameters are probed — the check is in the always-on inventory suite and must not send state-changing requests to the target. Setting `inventory.ssrfActiveProbe: true` opts into active probing of `POST`/`PUT`/`PATCH` operations and JSON body parameters (the common webhook / resource-creation SSRF vector); these requests may create or mutate resources on the target, so they are off by default. The `method` and `paramType` (`query`/`body`) of each accepted parameter are recorded in the evidence. An endpoint that fetches a user-supplied URL can be steered at internal-only services or cloud metadata endpoints (e.g. `169.254.169.254`) the caller should never reach — the core SSRF condition. This is surface detection: it confirms the parameter is accepted, not that a fetch is actually performed.  
 **Remediation:** Validate and allowlist outbound URL destinations, reject internal and link-local ranges, and avoid fetching user-supplied URLs directly. Resolve and check the target host before connecting.
 
+#### `inventory.excessive_data_exposure` — medium
+
+A GET operation's declared 200 response schema names a sensitive-looking field (matched by name — `apiKey`, `password`, `secret`, `token`, `ssn`, `internal`, `role`, `isAdmin` — or by OpenAPI `format: password`), and a live read confirms the field is actually present and non-null in the response (a schema match alone doesn't flag — a documented-but-unused property isn't evidence of exposure). Requires a loaded OpenAPI spec. GET operations with zero or one path parameter are probed; a single integer/number path parameter is swept with candidate ids (`1`–`5`, same approach as `auth.bola_object_access`); more than one path parameter is skipped as too speculative to synthesize. Evidence names the leaked field, never its value.  
+**Remediation:** Return only the fields a given endpoint or caller actually needs. Use per-endpoint response models and strip credentials, secrets, and internal-only fields before serialization — never rely on the client to ignore them.
+
 #### `inventory.graphql_introspection_enabled` — low
 
 The `/graphql` endpoint responded to an introspection query and returned schema data. Introspection gives attackers a complete, machine-readable map of every query, mutation, type, and field.  
@@ -205,15 +219,23 @@ The `/graphql` endpoint responded to an introspection query and returned schema 
 
 ## ratelimit
 
-Checks for HTTP rate limiting via header inspection across selected endpoints, then a sequential burst probe (default 10 requests, 75 ms apart) against the first selected endpoint.
+Checks for HTTP rate limiting via header inspection across selected endpoints, then a sequential burst probe (default 10 requests, 75 ms apart) against the first selected endpoint. When `businessFlow.sensitivePaths` declares one or more endpoints, the same burst probe also runs against each of them.
 
-| ID                              | Severity | Title                                   | OWASP                                   |
-| ------------------------------- | -------- | --------------------------------------- | --------------------------------------- |
+| ID                                     | Severity | Title                                                          | OWASP                                                 |
+| --------------------------------------- | -------- | ---------------------------------------------------------------- | -------------------------------------------------------- |
+| `ratelimit.sensitive_flow_unthrottled` | high     | Declared sensitive business flow endpoint is not rate limited    | API6: Unrestricted Access to Sensitive Business Flows     |
 | `ratelimit.no_429_on_burst`     | medium   | No rate limiting observed after burst   | API4: Unrestricted Resource Consumption |
 | `ratelimit.no_headers`          | low      | No rate limit headers observed          | API4: Unrestricted Resource Consumption |
 | `ratelimit.missing_retry_after` | low      | 429 response missing Retry-After header | API4: Unrestricted Resource Consumption |
 
 ### Finding details
+
+#### `ratelimit.sensitive_flow_unthrottled` — high
+
+An endpoint declared in `businessFlow.sensitivePaths` (config-only, opt-in — Sentinel never guesses which endpoints are sensitive business flows) completed a burst of sequential requests without triggering a 429 or returning rate-limit headers. Same burst-probe mechanism as `ratelimit.no_429_on_burst`, retargeted at each declared endpoint instead of the first selected one; a distinct, higher-severity ID reflects that an unthrottled *declared-sensitive* endpoint — checkout, coupon redemption, password reset — is a stronger signal than a generically unthrottled one, since unrestricted automation there has direct business or fraud impact.  
+**Remediation:** Apply stricter rate limiting or CAPTCHA/step-up verification specifically to business-critical flows, in addition to general API rate limiting.
+
+Declared entries may be `"METHOD /path"` (e.g. `"POST /api/v2/coupons/redeem"`), a bare path (defaults to `GET`), or an operationId resolved against the loaded OpenAPI spec. A throttled-but-missing-`Retry-After` result on a declared flow still emits the existing `ratelimit.missing_retry_after` (not a separate ID).
 
 #### `ratelimit.no_429_on_burst` — medium
 
@@ -238,6 +260,8 @@ Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` 
 | --------- | ----------------------------------------- | -------- |
 | auth      | `auth.jwt_alg_none`                       | critical |
 | injection | `injection.possible_command_injection`    | critical |
+| auth      | `auth.bola_object_access`                 | high     |
+| auth      | `auth.mass_assignment_accepted`           | high     |
 | auth      | `auth.invalid_token_accepted`             | high     |
 | auth      | `auth.jwt_weak_signature`                 | high     |
 | auth      | `auth.jwt_expired_accepted`               | high     |
@@ -245,6 +269,7 @@ Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` 
 | injection | `injection.sql_error_disclosure`          | high     |
 | injection | `injection.nosql_error_disclosure`        | high     |
 | injection | `injection.possible_template_injection`   | high     |
+| ratelimit | `ratelimit.sensitive_flow_unthrottled`    | high     |
 | auth      | `auth.jwt_missing_exp`                    | medium   |
 | auth      | `auth.redirect_cross_origin`              | medium   |
 | auth      | `auth.possible_bypass_probe`              | medium   |
@@ -253,6 +278,7 @@ Rate limiting was triggered (HTTP 429) but the response omitted a `Retry-After` 
 | inventory | `inventory.sensitive_endpoint_exposed`    | medium   |
 | inventory | `inventory.stale_version_responding`      | medium   |
 | inventory | `inventory.ssrf_surface`                  | medium   |
+| inventory | `inventory.excessive_data_exposure`       | medium   |
 | ratelimit | `ratelimit.no_429_on_burst`               | medium   |
 | auth      | `auth.jwt_long_ttl`                       | low      |
 | auth      | `auth.401_missing_www_authenticate`       | low      |

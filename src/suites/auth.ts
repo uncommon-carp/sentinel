@@ -9,11 +9,19 @@
  *   for alg:none, weak/stub signatures, missing exp, already-expired issuance, and
  *   overly long TTL (>24h)
  *
+ * - BOLA probe: with 2+ identities configured and an OpenAPI spec, discovers
+ *   object endpoints and flags a resource served byte-identically to two or
+ *   more identities while the unauthenticated request is rejected (API1)
+ * - Mass assignment probe (opt-in, mutating): discovers PATCH/PUT object
+ *   endpoints, sends a canary field absent from the operation's documented
+ *   request body, and re-reads the resource to check whether it persisted (API3)
+ *
  * Heuristic by design — false positives are possible if probePaths are not protected.
  *
  * Configuration:
- * - auth.probePaths       endpoints for probing (default ["/"])
- * - auth.compareUnauthed  gates the authed vs. unauthed comparison
+ * - auth.probePaths           endpoints for probing (default ["/"])
+ * - auth.compareUnauthed      gates the authed vs. unauthed comparison
+ * - auth.massAssignmentProbe  opt-in: gates the mass assignment probe (mutating)
  */
 
 import type { Suite, Finding, SelectedEndpoint } from '../core/types.js';
@@ -249,6 +257,65 @@ function discoverObjectEndpoints(spec: Record<string, unknown>): ObjectEndpoint[
     const type = pathParamSchemaType(operation, pathItem, paramName);
     if (type !== 'integer' && type !== 'number') continue;
     out.push({ path, paramName });
+  }
+  return out;
+}
+
+// Mass assignment probe support (OWASP API3, opt-in via auth.massAssignmentProbe).
+//
+// Candidate canary field names, tried in order until one isn't already
+// declared on the operation's own request body — injecting a field the
+// operation itself documents would prove nothing (that write is expected).
+const CANARY_FIELD_CANDIDATES = ['role', 'isAdmin', 'admin', 'privilege'];
+const CANARY_VALUE = 'sentinel-canary-9f2b1e';
+
+type WritableObjectEndpoint = {
+  path: string;
+  paramName: string;
+  method: 'patch' | 'put';
+  canaryField: string;
+};
+
+// Property names declared on an operation's JSON request body — used to pick
+// a canary field guaranteed absent from the documented schema.
+function declaredBodyFieldNames(operation: Record<string, unknown>): Set<string> {
+  const requestBody = operation['requestBody'] as Record<string, unknown> | undefined;
+  const content = requestBody?.['content'] as Record<string, unknown> | undefined;
+  const json = content?.['application/json'] as Record<string, unknown> | undefined;
+  const schema = json?.['schema'] as Record<string, unknown> | undefined;
+  const properties = schema?.['properties'];
+  if (!properties || typeof properties !== 'object') return new Set();
+  return new Set(Object.keys(properties as Record<string, unknown>));
+}
+
+function pickCanaryField(declared: Set<string>): string {
+  return CANARY_FIELD_CANDIDATES.find((f) => !declared.has(f)) ?? `sentinelCanary${Date.now()}`;
+}
+
+// Writable object endpoints are PATCH/PUT operations on the same single-
+// integer-path-param shape discoverObjectEndpoints looks for on GET.
+function discoverWritableObjectEndpoints(spec: Record<string, unknown>): WritableObjectEndpoint[] {
+  const paths = spec.paths as Record<string, unknown> | undefined;
+  if (!paths || typeof paths !== 'object') return [];
+  const out: WritableObjectEndpoint[] = [];
+  for (const [path, pathItemRaw] of Object.entries(paths)) {
+    const pathItem = pathItemRaw as Record<string, unknown> | undefined;
+    if (!pathItem) continue;
+    const params = pathParamNames(path);
+    if (params.length !== 1) continue;
+    const paramName = params[0]!;
+    for (const method of ['patch', 'put'] as const) {
+      const operation = pathItem[method] as Record<string, unknown> | undefined;
+      if (!operation) continue;
+      const type = pathParamSchemaType(operation, pathItem, paramName);
+      if (type !== 'integer' && type !== 'number') continue;
+      out.push({
+        path,
+        paramName,
+        method,
+        canaryField: pickCanaryField(declaredBodyFieldNames(operation))
+      });
+    }
   }
   return out;
 }
@@ -557,6 +624,109 @@ export function authSuite(): Suite {
             evidence: { accesses },
             suite: 'auth',
             tags: ['auth', 'bola', 'api1']
+          });
+        }
+      }
+
+      // Mass assignment probe (OWASP API3), opt-in via auth.massAssignmentProbe
+      // — mutating, so off by default (same precedent as inventory.ssrfActiveProbe).
+      // Reuses the BOLA probe's object-endpoint-discovery shape, filtered to
+      // PATCH/PUT operations. Unlike the read-only BOLA sweep, this only ever
+      // writes through a given identity's own session — never another
+      // identity's object — since a write, unlike a read, has side effects.
+      if (ctx.api && ctx.config.auth.massAssignmentProbe) {
+        const basePath = extractBasePath(ctx.api);
+        const writableEndpoints = discoverWritableObjectEndpoints(ctx.api.spec);
+        const probeIdentities = (ctx.identities?.length ? ctx.identities : undefined) ?? [
+          { name: 'primary', http: ctx.http }
+        ];
+
+        const accepted: Array<{
+          endpoint: string;
+          identity: string;
+          resourceId: number;
+          field: string;
+          value: string;
+        }> = [];
+
+        let budget = cap;
+        for (const identity of probeIdentities) {
+          if (budget < 1) break;
+          for (const ep of writableEndpoints) {
+            if (budget < 1) break;
+            const method = ep.method.toUpperCase();
+
+            for (const id of BOLA_CANDIDATE_IDS) {
+              if (budget < 1) break;
+              budget -= 1;
+
+              const requestPath = `${basePath}${ep.path.replace(`{${ep.paramName}}`, String(id))}`;
+              logger.debug('Mass assignment probe', {
+                event: 'auth.mass_assignment.probe',
+                endpoint: `${method} ${requestPath}`,
+                resourceId: id,
+                field: ep.canaryField
+              });
+
+              const writeRes = await identity.http.request({
+                method,
+                path: requestPath,
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ [ep.canaryField]: CANARY_VALUE })
+              });
+              if (writeRes.status < 200 || writeRes.status >= 300) continue;
+              if (budget < 1) break;
+              budget -= 1;
+
+              const readRes = await identity.http.request({ method: 'GET', path: requestPath });
+              if (readRes.status < 200 || readRes.status >= 300) continue;
+
+              let body: unknown;
+              try {
+                body = JSON.parse(readRes.bodyText);
+              } catch {
+                continue;
+              }
+              if (typeof body !== 'object' || body === null) continue;
+              if ((body as Record<string, unknown>)[ep.canaryField] === CANARY_VALUE) {
+                accepted.push({
+                  endpoint: `${method} ${requestPath}`,
+                  identity: identity.name,
+                  resourceId: id,
+                  field: ep.canaryField,
+                  value: CANARY_VALUE
+                });
+                break; // endpoint confirmed for this identity — move to the next one
+              }
+            }
+          }
+        }
+
+        if (accepted.length > 0) {
+          findings.push({
+            id: 'auth.mass_assignment_accepted',
+            title: 'Endpoint persisted a field absent from its documented request body',
+            severity: 'high',
+            description:
+              `${accepted.length} write(s) with a synthetic field not declared in the ` +
+              "operation's request-body schema were accepted and persisted. The endpoint binds " +
+              'the entire request body to the stored object instead of only the fields it ' +
+              'documents as settable, so a caller can set fields — roles, ownership, internal ' +
+              'flags — the API never intended to expose (mass assignment).',
+            whyItMatters:
+              'Mass assignment lets an attacker escalate privileges or corrupt data by setting ' +
+              "fields the client was never meant to control — e.g. flipping their own account's " +
+              '`role` to admin on an update that was only supposed to change a display name.',
+            remediation:
+              'Bind requests to an explicit allow-list of fields per operation (a DTO or update ' +
+              'schema), never the raw request body to the storage model. Reject or ignore ' +
+              'undocumented fields instead of silently persisting them.',
+            owasp: 'API3: Broken Object Property Level Authorization',
+            // Evidence names the injected field/value pair — safe to include since
+            // it's Sentinel's own synthetic canary, not real user data.
+            evidence: { accepted },
+            suite: 'auth',
+            tags: ['auth', 'mass-assignment', 'api3']
           });
         }
       }

@@ -11,11 +11,16 @@
  *   confirms the server takes an external URL without a validation signal (API7). GET
  *   query params only by default; `inventory.ssrfActiveProbe` opts into probing
  *   POST/PUT/PATCH and body params (active, may create/mutate resources on the target).
+ * - Excessive data exposure: if an OpenAPI spec is loaded, finds GET operations whose
+ *   declared 200 response schema names a sensitive-looking field (apiKey, password,
+ *   secret, token, ssn, internal, role, isAdmin, or `format: password`) and confirms
+ *   the field is actually present and non-null in a live read (API3)
  *
  * Multiple paths triggering the same class of issue are collapsed into one finding.
  *
  * Maps primarily to OWASP API9: Improper Inventory Management (the SSRF surface check
- * maps to API7 — one suite can emit findings across OWASP categories).
+ * maps to API7, excessive data exposure maps to API3 — one suite can emit findings
+ * across OWASP categories).
  */
 
 import type { Suite, Finding } from '../core/types.js';
@@ -167,6 +172,108 @@ function extractDeclaredVersion(spec: Record<string, unknown>): string | null {
 function versionNumber(v: string): number {
   const m = v.match(/(\d+)/);
   return m ? parseInt(m[1] ?? '0', 10) : 0;
+}
+
+// Excessive data exposure (API3). We walk each GET operation's declared 200
+// response schema — the same tree-walk shape collectUrlParams/collectBodyFields
+// use for request params, applied to responses instead — for property names
+// that look sensitive, then confirm with a live read that the field is
+// actually present and non-null. A schema match alone isn't sufficient: a
+// documented-but-unused response property would otherwise false-positive.
+const SENSITIVE_FIELD_PATTERNS = [
+  'apikey',
+  'password',
+  'secret',
+  'token',
+  'ssn',
+  'internal',
+  'role',
+  'isadmin'
+];
+
+// Same precedent as auth.ts's BOLA_CANDIDATE_IDS: v1 only handles object
+// endpoints keyed by a single enumerable (integer) path parameter. Opaque/UUID
+// ids aren't synthesized yet.
+const DATA_EXPOSURE_CANDIDATE_IDS = [1, 2, 3, 4, 5];
+
+type DataExposureEndpoint = {
+  path: string;
+  paramName: string | null;
+  sensitiveFields: string[];
+};
+
+function isSensitiveField(name: string, schema: Record<string, unknown> | undefined): boolean {
+  const lower = name.toLowerCase();
+  if (SENSITIVE_FIELD_PATTERNS.some((p) => lower.includes(p))) return true;
+  const format = typeof schema?.['format'] === 'string' ? schema['format'].toLowerCase() : '';
+  return format === 'password';
+}
+
+// Sensitive-looking property names declared on a GET operation's 200 JSON
+// response schema.
+function collectSensitiveResponseFields(operation: Record<string, unknown>): string[] {
+  const responses = operation['responses'] as Record<string, unknown> | undefined;
+  const ok = responses?.['200'] as Record<string, unknown> | undefined;
+  const content = ok?.['content'] as Record<string, unknown> | undefined;
+  const json = content?.['application/json'] as Record<string, unknown> | undefined;
+  const schema = json?.['schema'] as Record<string, unknown> | undefined;
+  const properties = schema?.['properties'];
+  if (!properties || typeof properties !== 'object') return [];
+  return Object.entries(properties as Record<string, unknown>)
+    .filter(([name, propSchema]) =>
+      isSensitiveField(name, propSchema as Record<string, unknown> | undefined)
+    )
+    .map(([name]) => name);
+}
+
+function pathParamNames(path: string): string[] {
+  return [...path.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]!);
+}
+
+function pathParamSchemaType(
+  operation: Record<string, unknown>,
+  pathItem: Record<string, unknown>,
+  paramName: string
+): string | null {
+  for (const p of [
+    ...asParamArray(operation['parameters']),
+    ...asParamArray(pathItem['parameters'])
+  ]) {
+    if (p['in'] === 'path' && p['name'] === paramName) {
+      const schema = p['schema'] as Record<string, unknown> | undefined;
+      return typeof schema?.['type'] === 'string' ? (schema['type'] as string) : null;
+    }
+  }
+  return null;
+}
+
+// GET operations whose declared 200 response includes at least one
+// sensitive-looking field, restricted to paths with zero or one path
+// parameter — more than one is too speculative to synthesize candidate
+// values for (same precedent as auth.ts's discoverObjectEndpoints), and a
+// non-integer single param can't be synthesized either.
+function discoverDataExposureEndpoints(spec: Record<string, unknown>): DataExposureEndpoint[] {
+  const paths = spec.paths as Record<string, unknown> | undefined;
+  if (!paths || typeof paths !== 'object') return [];
+  const out: DataExposureEndpoint[] = [];
+  for (const [path, pathItemRaw] of Object.entries(paths)) {
+    const pathItem = pathItemRaw as Record<string, unknown> | undefined;
+    if (!pathItem) continue;
+    const operation = pathItem['get'] as Record<string, unknown> | undefined;
+    if (!operation) continue;
+    const sensitiveFields = collectSensitiveResponseFields(operation);
+    if (sensitiveFields.length === 0) continue;
+    const params = pathParamNames(path);
+    if (params.length > 1) continue;
+    let paramName: string | null = null;
+    if (params.length === 1) {
+      const type = pathParamSchemaType(operation, pathItem, params[0]!);
+      if (type !== 'integer' && type !== 'number') continue;
+      paramName = params[0]!;
+    }
+    out.push({ path, paramName, sensitiveFields });
+  }
+  return out;
 }
 
 export function inventorySuite(): Suite {
@@ -365,6 +472,84 @@ export function inventorySuite(): Suite {
             evidence: { probeUrl: SSRF_PROBE_URL, parameters: accepted },
             suite: 'inventory',
             tags: ['inventory', 'ssrf', 'api7']
+          });
+        }
+      }
+
+      if (ctx.api) {
+        const basePath = extractBasePath(ctx.api);
+        const dataExposureEndpoints = discoverDataExposureEndpoints(ctx.api.spec);
+        const flagged: Array<{ endpoint: string; fields: string[] }> = [];
+
+        // Same budget-against-cap discipline as the BOLA probe: an endpoint
+        // keyed by a synthesized id may need several attempts to land a 2xx,
+        // so charge the worst case (one request per candidate id) against the
+        // shared cap rather than one-per-endpoint.
+        let budget = cap;
+        for (const ep of dataExposureEndpoints) {
+          if (budget < 1) break;
+          const candidates = ep.paramName === null ? [null] : DATA_EXPOSURE_CANDIDATE_IDS;
+          for (const id of candidates) {
+            if (budget < 1) break;
+            budget -= 1;
+
+            const concretePath =
+              ep.paramName === null || id === null
+                ? ep.path
+                : ep.path.replace(`{${ep.paramName}}`, String(id));
+            const requestPath = `${basePath}${concretePath}`;
+            logger.debug('Excessive data exposure probe', {
+              event: 'inventory.data_exposure.probe',
+              endpoint: `GET ${requestPath}`
+            });
+
+            const res = await ctx.http.request({ method: 'GET', path: requestPath });
+            if (res.status < 200 || res.status >= 300) continue;
+
+            let body: unknown;
+            try {
+              body = JSON.parse(res.bodyText);
+            } catch {
+              break; // not JSON — no schema field to confirm; other ids won't match either
+            }
+            if (typeof body !== 'object' || body === null) break;
+
+            const present = ep.sensitiveFields.filter((f) => {
+              const v = (body as Record<string, unknown>)[f];
+              return v !== undefined && v !== null;
+            });
+            if (present.length > 0) {
+              flagged.push({ endpoint: `GET ${basePath}${ep.path}`, fields: present });
+            }
+            break; // got a live 2xx read for this endpoint — done regardless of match
+          }
+        }
+
+        if (flagged.length > 0) {
+          findings.push({
+            id: 'inventory.excessive_data_exposure',
+            title: 'Response includes sensitive fields beyond what the client needs',
+            severity: 'medium',
+            description:
+              `${flagged.length} endpoint(s) returned a live response containing a field ` +
+              'declared sensitive by name (e.g. apiKey, password, secret, token, ssn, internal, ' +
+              'role, isAdmin) or by OpenAPI format (password). The endpoint relies on the client ' +
+              'to discard fields it does not need rather than omitting them server-side.',
+            whyItMatters:
+              'Serving more data than a client needs — credentials, internal flags, other ' +
+              "users' identifiers — means every consumer of the API becomes a place that sensitive " +
+              'data can leak from: logs, browser dev tools, a compromised client, or a caller that ' +
+              'was never meant to see the field at all.',
+            remediation:
+              'Return only the fields a given endpoint or caller actually needs. Use per-endpoint ' +
+              'response models (not a shared internal object) and strip credentials, secrets, and ' +
+              'internal-only fields before serialization — never rely on the client to ignore them.',
+            owasp: 'API3: Broken Object Property Level Authorization',
+            // Evidence names the leaked fields, not their values — the values
+            // are the sensitive data the finding is about.
+            evidence: { endpoints: flagged },
+            suite: 'inventory',
+            tags: ['inventory', 'data-exposure', 'api3']
           });
         }
       }
